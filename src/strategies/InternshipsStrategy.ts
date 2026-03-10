@@ -13,10 +13,9 @@ import { getConfigProperty } from '../configuration/config.js';
 import { truncateString } from '../utils/components.js';
 
 export class InternshipsStrategy implements ScraperStrategy {
-  public idsSelector =
-    'div.d-flex.justify-content-between.align-items-center.card-footer.bg-transparent.border-0 > a';
+  public idsSelector = 'div.card-footer > a.btn';
 
-  public postsSelector = 'div.card.card-style';
+  public postsSelector = 'div.container div.row > div.col > div.card';
 
   public scraperService = Service.INTERNSHIPS;
 
@@ -62,15 +61,16 @@ export class InternshipsStrategy implements ScraperStrategy {
 
     const company =
       element
-        .querySelector('p.mb-1.text-secondary.small i.bi-building')
+        .querySelector('p.mb-2.text-secondary.small i.bi-building')
         ?.parentElement?.querySelector('span')
         ?.textContent.trim() ?? null;
 
     const deadline =
       element
-        .querySelector('p.mb-1.text-secondary.small i.bi-calendar-x')
+        .querySelector('p.mb-0.text-secondary.small i.bi-calendar-x')
         ?.parentElement?.querySelector('span')
-        ?.textContent.trim() ?? null;
+        ?.textContent.trim()
+        .replace('Активен до: ', '') ?? null;
 
     const status =
       element.querySelector('span.badge')?.textContent.trim() ?? null;
