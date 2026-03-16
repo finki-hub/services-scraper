@@ -1,3 +1,6 @@
+import type { Cheerio } from 'cheerio';
+import type { Element } from 'domhandler';
+
 import { ContainerBuilder, heading, hyperlink } from 'discord.js';
 
 import type { PostData } from '../lib/Post.js';
@@ -10,19 +13,22 @@ export class TimetablesStrategy implements ScraperStrategy {
 
   public postsSelector = 'div.col-sm-11';
 
-  public getId(element: Element): null | string {
-    const id = element
-      .querySelector(this.idsSelector)
-      ?.textContent.replaceAll(/\s+/gu, ' ')
+  public getId($element: Cheerio<Element>): null | string {
+    const id = $element
+      .find(this.idsSelector)
+      .text()
+      .replaceAll(/\s+/gu, ' ')
       .trim();
-    return id === undefined || id === '' ? null : id;
+
+    return id === '' ? null : id;
   }
 
-  public getPostData(element: Element): PostData {
-    const url = element.querySelector('a')?.getAttribute('href')?.trim();
+  public getPostData($element: Cheerio<Element>): PostData {
+    const url = $element.find('a').attr('href')?.trim();
     const link =
       url === undefined ? null : normalizeURL(url, 'https://finki.ukim.mk');
-    const title = element.querySelector('a')?.textContent.trim() ?? '?';
+
+    const title = $element.find('a').text().trim() || '?';
 
     const component = new ContainerBuilder().addTextDisplayComponents(
       (textDisplayComponent) =>
@@ -33,7 +39,7 @@ export class TimetablesStrategy implements ScraperStrategy {
 
     return {
       component,
-      id: this.getId(element),
+      id: this.getId($element),
     };
   }
 }

@@ -1,3 +1,5 @@
+import type { Cheerio } from 'cheerio';
+
 import {
   bold,
   ContainerBuilder,
@@ -5,6 +7,7 @@ import {
   hyperlink,
   TextDisplayBuilder,
 } from 'discord.js';
+import { type Element } from 'domhandler';
 import { CasAuthentication, Service } from 'finki-auth';
 
 import type { PostData } from '../lib/Post.js';
@@ -40,35 +43,28 @@ export class CourseStrategy implements ScraperStrategy {
     return await auth.buildCookieHeader(Service.COURSES);
   }
 
-  public getId(element: Element): null | string {
-    const id = element
-      .querySelector(this.idsSelector)
-      ?.getAttribute('href')
-      ?.trim();
+  public getId($element: Cheerio<Element>): null | string {
+    const id = $element.find(this.idsSelector).attr('href')?.trim();
+
     return id === undefined || id === '' ? null : id;
   }
 
-  public getPostData(element: Element): PostData {
-    const linkEl = element.querySelector<HTMLAnchorElement>(
-      '[title="Permanent link to this post"]',
-    );
-    const link = linkEl?.href ?? null;
+  public getPostData($element: Cheerio<Element>): PostData {
+    const link =
+      $element.find('[title="Permanent link to this post"]').attr('href') ??
+      null;
 
-    const imgEl = element.querySelector<HTMLImageElement>(
-      'img[title*="Picture of"]',
-    );
-    const authorImage = imgEl?.src ?? null;
+    const authorImage =
+      $element.find('img[title*="Picture of"]').attr('src') ?? null;
 
-    const authorDiv = element.querySelector('div.mb-3');
-    const authorAnchor = authorDiv?.querySelector('a');
-    const authorName = authorAnchor?.textContent.trim() ?? '?';
-    const authorLink = authorAnchor?.href ?? null;
+    const $authorAnchor = $element.find('div.mb-3 a');
 
-    const content =
-      element.querySelector('div.post-content-container')?.textContent.trim() ??
-      '?';
-    const title =
-      element.querySelector('h4 > a:last-of-type')?.textContent.trim() ?? '?';
+    const authorName = $authorAnchor.text().trim() || '?';
+    const authorLink = $authorAnchor.attr('href') ?? null;
+
+    const content = $element.find('div.post-content-container').text().trim();
+
+    const title = $element.find('h4 > a:last-of-type').text().trim() || '?';
 
     const textDisplayComponents = [
       new TextDisplayBuilder().setContent(
@@ -99,7 +95,7 @@ export class CourseStrategy implements ScraperStrategy {
 
     return {
       component,
-      id: this.getId(element),
+      id: this.getId($element),
     };
   }
 

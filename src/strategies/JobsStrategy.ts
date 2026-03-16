@@ -1,3 +1,6 @@
+import type { Cheerio } from 'cheerio';
+import type { Element } from 'domhandler';
+
 import {
   ContainerBuilder,
   heading,
@@ -15,27 +18,27 @@ export class JobsStrategy implements ScraperStrategy {
 
   public postsSelector = 'div.views-row';
 
-  public getId(element: Element): null | string {
-    const url = element
-      .querySelector(this.idsSelector)
-      ?.getAttribute('href')
-      ?.trim();
+  public getId($element: Cheerio<Element>): null | string {
+    const url = $element.find(this.idsSelector).attr('href')?.trim();
+
     return url === undefined || url === ''
       ? null
       : `https://finki.ukim.mk${url}`;
   }
 
-  public getPostData(element: Element): PostData {
-    const url = element.querySelector('a + a')?.getAttribute('href')?.trim();
+  public getPostData($element: Cheerio<Element>): PostData {
+    const url = $element.find('a + a').attr('href')?.trim();
     const link = url === undefined ? null : `https://finki.ukim.mk${url}`;
-    const title = element.querySelector('a + a')?.textContent.trim() ?? '?';
+
+    const title = $element.find('a + a').text().trim() || '?';
+
     const content =
-      element
-        .querySelector('div.col-xs-12.col-sm-8 > div.field-content')
-        ?.textContent.trim() ?? '?';
-    const image =
-      element.querySelector('img')?.getAttribute('src')?.split('?').at(0) ??
-      null;
+      $element
+        .find('div.col-xs-12.col-sm-8 > div.field-content')
+        .text()
+        .trim() || '?';
+
+    const image = $element.find('img').attr('src')?.split('?').at(0) ?? null;
 
     const textDisplayComponents = [
       new TextDisplayBuilder().setContent(
@@ -60,7 +63,7 @@ export class JobsStrategy implements ScraperStrategy {
                     thumbnailBuilder.setURL(image),
                   ),
             ),
-      id: this.getId(element),
+      id: this.getId($element),
     };
   }
 }

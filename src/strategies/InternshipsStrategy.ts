@@ -1,3 +1,6 @@
+import type { Cheerio } from 'cheerio';
+import type { Element } from 'domhandler';
+
 import {
   ContainerBuilder,
   heading,
@@ -35,45 +38,41 @@ export class InternshipsStrategy implements ScraperStrategy {
     return await auth.buildCookieHeader(Service.INTERNSHIPS);
   }
 
-  public getId(element: Element): null | string {
-    const url = element
-      .querySelector(this.idsSelector)
-      ?.getAttribute('href')
-      ?.trim();
+  public getId($element: Cheerio<Element>): null | string {
+    const url = $element.find(this.idsSelector).attr('href')?.trim();
+
     return url === undefined || url === ''
       ? null
       : `https://internships.finki.ukim.mk${url}`;
   }
 
-  public getPostData(element: Element): PostData {
-    const url = element
-      .querySelector(this.idsSelector)
-      ?.getAttribute('href')
-      ?.trim();
+  public getPostData($element: Cheerio<Element>): PostData {
+    const url = $element.find('div.card-footer > a.btn').attr('href')?.trim();
     const link =
       url === undefined ? null : `https://internships.finki.ukim.mk${url}`;
 
-    const title =
-      element.querySelector('h5.card-title')?.textContent.trim() ?? '?';
+    const title = $element.find('h5.card-title').text().trim() || '?';
 
-    const description =
-      element.querySelector('p.card-text')?.textContent.trim() ?? '?';
+    const description = $element.find('p.card-text').text().trim() || '?';
 
     const company =
-      element
-        .querySelector('p.mb-2.text-secondary.small i.bi-building')
-        ?.parentElement?.querySelector('span')
-        ?.textContent.trim() ?? null;
+      $element
+        .find('p.mb-2.text-secondary.small i.bi-building')
+        .parent()
+        .find('span')
+        .text()
+        .trim() || null;
 
     const deadline =
-      element
-        .querySelector('p.mb-0.text-secondary.small i.bi-calendar-x')
-        ?.parentElement?.querySelector('span')
-        ?.textContent.trim()
-        .replace('Активен до: ', '') ?? null;
+      $element
+        .find('p.mb-0.text-secondary.small i.bi-calendar-x')
+        .parent()
+        .find('span span')
+        .text()
+        .trim()
+        .replace('Активен до: ', '') || null;
 
-    const status =
-      element.querySelector('span.badge')?.textContent.trim() ?? null;
+    const status = $element.find('span.badge').text().trim() || null;
 
     let containerBuilder = new ContainerBuilder()
       .addTextDisplayComponents((textDisplayComponent) =>
@@ -115,7 +114,7 @@ export class InternshipsStrategy implements ScraperStrategy {
 
     return {
       component: containerBuilder,
-      id: this.getId(element),
+      id: this.getId($element),
     };
   }
 

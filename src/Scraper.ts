@@ -1,3 +1,6 @@
+import type { CheerioAPI } from 'cheerio';
+
+import * as cheerio from 'cheerio';
 import {
   type APIMessageTopLevelComponent,
   codeBlock,
@@ -5,8 +8,8 @@ import {
   MessageFlagsBitField,
   WebhookClient,
 } from 'discord.js';
+import { type Element, isTag } from 'domhandler';
 import { isCookieHeaderValid } from 'finki-auth';
-import { JSDOM } from 'jsdom';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { setTimeout } from 'node:timers/promises';
@@ -157,9 +160,12 @@ export class Scraper {
     this.checkStatusCode(response.status);
 
     const text = await this.getTextFromResponse(response);
+
+    const $ = cheerio.load(text);
+
     const cache = await this.readCacheFile();
-    const posts = this.getPostsFromDOM(text);
-    const ids = this.getIdsFromPosts(posts);
+    const posts = this.getPostsFromDOM($);
+    const ids = this.getIdsFromPosts($, posts);
 
     if (checkCache && this.hasNoNewPosts(ids, cache)) {
       this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.noNewPosts}`);
@@ -167,7 +173,7 @@ export class Scraper {
       return [];
     }
 
-    const validPosts = await this.processNewPosts(posts, cache, checkCache);
+    const validPosts = await this.processNewPosts($, posts, cache, checkCache);
     await this.writeCacheFile(ids);
 
     const sendPosts = getConfigProperty('sendPosts');
@@ -179,15 +185,15 @@ export class Scraper {
     return validPosts;
   }
 
-  private getIdsFromPosts(posts: Element[]): Array<null | string> {
-    return posts.map((post) => this.strategy.getId(post));
+  private getIdsFromPosts(
+    $: CheerioAPI,
+    posts: Element[],
+  ): Array<null | string> {
+    return posts.map((post) => this.strategy.getId($(post)));
   }
 
-  private getPostsFromDOM(html: string) {
-    const { window } = new JSDOM(html);
-    const posts = Array.from(
-      window.document.querySelectorAll(this.strategy.postsSelector),
-    );
+  private getPostsFromDOM($: ReturnType<typeof cheerio.load>): Element[] {
+    const posts = $(this.strategy.postsSelector).toArray().filter(isTag);
 
     const maxPosts =
       this.scraperConfig.maxPosts ?? getConfigProperty('maxPosts');
@@ -281,6 +287,7 @@ export class Scraper {
   }
 
   private async processNewPosts(
+    $: CheerioAPI,
     posts: Element[],
     cache: string[],
     checkCache: boolean,
@@ -290,13 +297,13 @@ export class Scraper {
     const sendPosts = getConfigProperty('sendPosts');
 
     for (const post of allPosts) {
-      const { component, id } = this.strategy.getPostData(post);
+      const { component, id } = this.strategy.getPostData($(post));
 
       if (id === null) {
         await this.handleError(
           ERROR_MESSAGES.postIdNotFound,
           'while extracting post ID',
-          post.outerHTML,
+          $.html(post),
         );
 
         continue;
