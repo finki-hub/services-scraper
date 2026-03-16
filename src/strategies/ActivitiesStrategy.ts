@@ -1,3 +1,5 @@
+import type { Cheerio } from 'cheerio';
+
 import {
   bold,
   ContainerBuilder,
@@ -5,6 +7,7 @@ import {
   hyperlink,
   SeparatorSpacingSize,
 } from 'discord.js';
+import { type Element } from 'domhandler';
 import { CasAuthentication, Service } from 'finki-auth';
 
 import type { PostData } from '../lib/Post.js';
@@ -37,28 +40,25 @@ export class ActivitiesStrategy implements ScraperStrategy {
     return await auth.buildCookieHeader(Service.COURSES);
   }
 
-  public getId(element: Element): null | string {
-    const id = element.getAttribute('data-id')?.trim();
+  public getId($element: Cheerio<Element>): null | string {
+    const id = $element.attr('data-id')?.trim();
+
     return id === undefined || id === '' ? null : id;
   }
 
-  public getPostData(element: Element): PostData {
+  public getPostData($element: Cheerio<Element>): PostData {
     const name =
-      element
-        .querySelector<HTMLDivElement>('div.activity-item')
-        ?.getAttribute('data-activityname')
-        ?.trim() ?? '?';
+      $element.find('div.activity-item').attr('data-activityname')?.trim() ??
+      '?';
 
     const link =
-      element.querySelector<HTMLAnchorElement>('div.activityname > a')?.href ??
-      null;
+      $element.find('div.activityname > a').attr('href')?.trim() ?? null;
 
     const description =
-      element
-        .querySelector<HTMLDivElement>('div.activity-altcontent')
-        ?.textContent.trim() ?? null;
+      $element.find('div.activity-altcontent').text().trim() || null;
 
-    const rawType = element.classList.item(2) ?? '';
+    const classString = $element.attr('class') ?? '';
+    const rawType = classString.split(/\s+/u)[2] ?? '';
     const type = ACTIVITY_TYPES[rawType] ?? null;
 
     const component = new ContainerBuilder().addTextDisplayComponents(
@@ -86,7 +86,7 @@ export class ActivitiesStrategy implements ScraperStrategy {
 
     return {
       component,
-      id: this.getId(element),
+      id: this.getId($element),
     };
   }
 

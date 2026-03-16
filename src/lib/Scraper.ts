@@ -1,3 +1,5 @@
+import type { Cheerio } from 'cheerio';
+import type { Element } from 'domhandler';
 import type { Service } from 'finki-auth';
 
 import { z } from 'zod';
@@ -34,8 +36,8 @@ export type ScraperConfig = z.infer<typeof ScraperConfigSchema>;
 export type ScraperStrategy = {
   filterPosts?: (posts: Element[]) => Element[];
   getCookie?: () => Promise<string>;
-  getId: (element: Element) => null | string;
-  getPostData: (element: Element) => PostData;
+  getId: ($element: Cheerio<Element>) => null | string;
+  getPostData: ($element: Cheerio<Element>) => PostData;
   getRequestInit?: (cookie: string | undefined) => RequestInit | undefined;
   idsSelector: string;
   postsSelector: string;

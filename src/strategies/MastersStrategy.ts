@@ -1,3 +1,6 @@
+import type { Cheerio } from 'cheerio';
+import type { Element } from 'domhandler';
+
 import {
   bold,
   ContainerBuilder,
@@ -35,44 +38,42 @@ export class MastersStrategy implements ScraperStrategy {
     return await auth.buildCookieHeader(Service.MASTERS);
   }
 
-  public getId(element: Element): null | string {
-    const id = element
-      .querySelector(this.idsSelector)
-      ?.textContent.replaceAll(/\s+/gu, ' ')
+  public getId($element: Cheerio<Element>): null | string {
+    const id = $element
+      .find(this.idsSelector)
+      .text()
+      .replaceAll(/\s+/gu, ' ')
       .trim();
-    return id === undefined || id === '' ? null : id;
+
+    return id === '' ? null : id;
   }
 
-  public getPostData(element: Element): PostData {
-    const title = element.querySelector('h5')?.textContent.trim() ?? '?';
+  public getPostData($element: Cheerio<Element>): PostData {
+    const title = $element.find('h5').text().trim() || '?';
 
-    const rows = element.querySelectorAll('table tbody tr');
+    const $rows = $element.find('table tbody tr');
 
     const cellText = (row: number, col = 2) =>
-      rows[row]?.querySelector(`td:nth-of-type(${col})`)?.textContent.trim() ??
-      '?';
+      $rows.eq(row).find(`td:nth-of-type(${col})`).text().trim() || '?';
 
-    const studentCell = rows[0]?.querySelector('td:nth-of-type(2)');
-    const indexSpan =
-      studentCell?.querySelector('span:nth-of-type(1)')?.textContent.trim() ??
-      '?';
-    const lastNameSpan =
-      studentCell?.querySelector('span:nth-of-type(2)')?.textContent.trim() ??
-      '?';
-    const firstNameSpan =
-      studentCell?.querySelector('span:nth-of-type(3)')?.textContent.trim() ??
-      '?';
-    const student = `${lastNameSpan} ${firstNameSpan}`;
+    const $studentCell = $rows.eq(0).find('td:nth-of-type(2)');
+
+    const index = $studentCell.find('span:nth-of-type(1)').text().trim() || '?';
+    const lastName =
+      $studentCell.find('span:nth-of-type(2)').text().trim() || '?';
+    const firstName =
+      $studentCell.find('span:nth-of-type(3)').text().trim() || '?';
+
+    const student = `${lastName} ${firstName}`.trim();
 
     const mentor = cellText(1);
     const president = cellText(2);
     const member = cellText(3);
-
     const content = cellText(8);
 
     const component = new ContainerBuilder()
       .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(bold(`${indexSpan} - ${student}`)),
+        textDisplayComponent.setContent(bold(`${index} - ${student}`)),
       )
       .addSeparatorComponents((separatorComponent) =>
         separatorComponent.setSpacing(SeparatorSpacingSize.Large),
@@ -87,7 +88,7 @@ export class MastersStrategy implements ScraperStrategy {
       )
       .addTextDisplayComponents((textDisplayComponent) =>
         textDisplayComponent.setContent(
-          content === '' ? 'Нема опис.' : truncateString(content),
+          content === '?' ? 'Нема опис.' : truncateString(content),
         ),
       )
       .addSeparatorComponents((separatorComponent) =>
@@ -105,7 +106,7 @@ export class MastersStrategy implements ScraperStrategy {
 
     return {
       component,
-      id: this.getId(element),
+      id: this.getId($element),
     };
   }
 

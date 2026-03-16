@@ -1,3 +1,6 @@
+import type { Cheerio } from 'cheerio';
+import type { Element } from 'domhandler';
+
 import { ContainerBuilder, heading, hyperlink } from 'discord.js';
 
 import type { PostData } from '../lib/Post.js';
@@ -9,19 +12,18 @@ export class ExampleStrategy implements ScraperStrategy {
   public postsSelector = 'Selector for all data containers';
 
   // Function for returning the ID of each data container
-  public getId(element: Element): null | string {
-    const url = element
-      .querySelector(this.idsSelector)
-      ?.getAttribute('href')
-      ?.trim();
+  public getId($element: Cheerio<Element>): null | string {
+    const url = $element.find(this.idsSelector).attr('href')?.trim();
+
     return url === undefined || url === '' ? null : url;
   }
 
   // Function for returning a component representation of each data container
-  public getPostData(element: Element): PostData {
-    const url = element.querySelector('a')?.getAttribute('href')?.trim();
+  public getPostData($element: Cheerio<Element>): PostData {
+    const url = $element.find('a').attr('href')?.trim();
     const link = url ?? null;
-    const title = element.querySelector('a')?.textContent.trim() ?? '?';
+
+    const title = $element.find('a').text().trim() || '?';
 
     const component = new ContainerBuilder().addTextDisplayComponents(
       (textDisplayComponent) =>
@@ -32,7 +34,7 @@ export class ExampleStrategy implements ScraperStrategy {
 
     return {
       component,
-      id: this.getId(element),
+      id: this.getId($element),
     };
   }
 }

@@ -1,3 +1,6 @@
+import type { Cheerio } from 'cheerio';
+import type { Element } from 'domhandler';
+
 import {
   bold,
   ContainerBuilder,
@@ -36,27 +39,32 @@ export class DiplomasStrategy implements ScraperStrategy {
     return await auth.buildCookieHeader(Service.DIPLOMAS);
   }
 
-  public getId(element: Element): null | string {
-    const id = element
-      .querySelector(this.idsSelector)
-      ?.textContent.replaceAll(/\s+/gu, ' ')
+  public getId($element: Cheerio<Element>): null | string {
+    const id = $element
+      .find(this.idsSelector)
+      .text()
+      .replaceAll(/\s+/gu, ' ')
       .trim();
-    return id === undefined || id === '' ? null : id;
+
+    return id === '' ? null : id;
   }
 
-  public getPostData(element: Element): PostData {
-    const title =
-      element.querySelector('div.panel-heading')?.textContent.trim() ?? '?';
+  public getPostData($element: Cheerio<Element>): PostData {
+    const title = $element.find('div.panel-heading').text().trim() || '?';
 
-    const rows = element.querySelectorAll('div.panel-body table tr');
+    const $rows = $element.find('div.panel-body table tr');
 
-    const cellText = (row: number, col = 2) =>
-      rows[row]?.querySelector(`td:nth-of-type(${col})`)?.textContent.trim() ??
+    const cellText = (rowIndex: number, colIndex = 2) =>
+      $rows.eq(rowIndex).find(`td:nth-of-type(${colIndex})`).text().trim() ||
       '?';
 
-    const [index, student] = cellText(0)
+    const [rawIndex, rawStudent] = cellText(0)
+      .replaceAll(/\s+/gu, ' ')
       .split(' - ')
       .map((s) => s.trim());
+
+    const index = rawIndex ?? '?';
+    const student = rawStudent ?? '?';
 
     const mentor = cellText(1);
     const member1 = cellText(2);
@@ -81,7 +89,7 @@ export class DiplomasStrategy implements ScraperStrategy {
       )
       .addTextDisplayComponents((textDisplayComponent) =>
         textDisplayComponent.setContent(
-          content === '' ? 'Нема опис.' : truncateString(content),
+          content === '?' ? 'Нема опис.' : truncateString(content),
         ),
       )
       .addSeparatorComponents((separatorComponent) =>
@@ -99,7 +107,7 @@ export class DiplomasStrategy implements ScraperStrategy {
 
     return {
       component,
-      id: this.getId(element),
+      id: this.getId($element),
     };
   }
 

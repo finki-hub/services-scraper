@@ -1,3 +1,6 @@
+import type { Cheerio } from 'cheerio';
+import type { Element } from 'domhandler';
+
 import { ContainerBuilder, heading, hyperlink } from 'discord.js';
 
 import type { PostData } from '../lib/Post.js';
@@ -35,21 +38,22 @@ export class PartnersStrategy implements ScraperStrategy {
 
   public postsSelector = 'div.card, div.support';
 
-  public getId(element: Element): null | string {
-    const url =
-      element.querySelector('a')?.getAttribute('href')?.trim() ?? null;
+  public getId($element: Cheerio<Element>): null | string {
+    const url = $element.find('a').attr('href')?.trim() ?? null;
 
     if (url && isSupportedByPartner(url)) {
       return 'A1';
     }
 
-    return cleanPartnerName(element.textContent);
+    const textContent = $element.text() || null;
+    return cleanPartnerName(textContent);
   }
 
-  public getPostData(element: Element): PostData {
-    const url =
-      element.querySelector('a')?.getAttribute('href')?.trim() ?? null;
-    let name = cleanPartnerName(element.textContent) ?? '?';
+  public getPostData($element: Cheerio<Element>): PostData {
+    const url = $element.find('a').attr('href')?.trim() ?? null;
+
+    const textContent = $element.text() || null;
+    let name = cleanPartnerName(textContent) ?? '?';
 
     if (url && isSupportedByPartner(url)) {
       name = 'A1';
@@ -67,7 +71,7 @@ export class PartnersStrategy implements ScraperStrategy {
 
     return {
       component,
-      id: this.getId(element),
+      id: this.getId($element),
     };
   }
 }
