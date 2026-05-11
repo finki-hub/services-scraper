@@ -177,6 +177,7 @@ export class Scraper {
     const sendPosts = getConfigProperty('sendPosts');
 
     if (sendPosts) {
+      await this.sendBatch(validPosts);
       logger.info(`[${this.scraperName}] ${LOG_MESSAGES.sentNewPosts}`);
     }
 
@@ -290,7 +291,6 @@ export class Scraper {
     const { $, checkCache, posts, seenIds } = options;
     const allPosts = this.strategy.filterPosts?.(posts) ?? posts.toReversed();
     const validPosts: Array<JSONEncodable<APIMessageTopLevelComponent>> = [];
-    const sendPosts = getConfigProperty('sendPosts');
 
     for (const post of allPosts) {
       const { component, id } = this.strategy.getPostData($(post));
@@ -314,39 +314,45 @@ export class Scraper {
       }
 
       validPosts.push(component);
-
-      if (sendPosts) {
-        try {
-          await this.sendPost(component, id);
-        } catch (error) {
-          await this.handleError(
-            error,
-            `while sending post: ${id}`,
-            JSON.stringify(component.toJSON(), null, 2),
-          );
-        }
-      }
+      this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.postSent}: ${id}`);
     }
 
     return validPosts;
   }
 
-  private async sendPost(
-    component: JSONEncodable<APIMessageTopLevelComponent>,
-    id: string,
+  private async sendBatch(
+    components: Array<JSONEncodable<APIMessageTopLevelComponent>>,
   ): Promise<void> {
-    await this.webhook?.send({
-      components: [
-        ...(this.scraperConfig.role === undefined ||
-        this.scraperConfig.role === ''
-          ? []
-          : [createMentionComponent(this.scraperConfig.role)]),
-        component,
-      ],
-      flags: MessageFlagsBitField.Flags.IsComponentsV2,
-      username: this.scraperConfig.name ?? this.scraperName,
-      withComponents: true,
-    });
-    this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.postSent}: ${id}`);
+    if (components.length === 0) {
+      return;
+    }
+
+    const mentionComponent =
+      this.scraperConfig.role === undefined || this.scraperConfig.role === ''
+        ? undefined
+        : createMentionComponent(this.scraperConfig.role);
+
+    const chunkSize = mentionComponent ? 9 : 10;
+
+    for (let index = 0; index < components.length; index += chunkSize) {
+      const chunk = components.slice(index, index + chunkSize);
+      const messageComponents = mentionComponent
+        ? [mentionComponent, ...chunk]
+        : chunk;
+
+      try {
+        await this.webhook?.send({
+          components: messageComponents,
+          flags: MessageFlagsBitField.Flags.IsComponentsV2,
+          username: this.scraperConfig.name ?? this.scraperName,
+          withComponents: true,
+        });
+      } catch (error) {
+        await this.handleError(
+          error,
+          `while sending batch of ${chunk.length} posts`,
+        );
+      }
+    }
   }
 }
