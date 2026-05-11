@@ -34,7 +34,6 @@ export enum Strategy {
 export type ScraperConfig = z.infer<typeof ScraperConfigSchema>;
 
 export type ScraperStrategy = {
-  filterPosts?: (posts: Element[]) => Element[];
   getCookie?: () => Promise<string>;
   getId: ($element: Cheerio<Element>) => null | string;
   getPostData: ($element: Cheerio<Element>) => PostData;

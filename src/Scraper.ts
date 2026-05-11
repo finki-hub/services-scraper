@@ -289,7 +289,7 @@ export class Scraper {
     seenIds: Set<string>;
   }): Promise<Array<JSONEncodable<APIMessageTopLevelComponent>>> {
     const { $, checkCache, posts, seenIds } = options;
-    const allPosts = this.strategy.filterPosts?.(posts) ?? posts.toReversed();
+    const allPosts = posts.toReversed();
     const validPosts: Array<JSONEncodable<APIMessageTopLevelComponent>> = [];
 
     for (const post of allPosts) {

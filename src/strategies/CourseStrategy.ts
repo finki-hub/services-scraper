@@ -23,10 +23,6 @@ export class CourseStrategy implements ScraperStrategy {
 
   public scraperService = Service.COURSES;
 
-  public filterPosts(posts: Element[]): Element[] {
-    return posts.toReversed().slice(0.3 * posts.length);
-  }
-
   public async getCookie(): Promise<string> {
     const credentials = getConfigProperty('credentials');
 
