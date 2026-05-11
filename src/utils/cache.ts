@@ -1,5 +1,11 @@
 import SqliteDatabase from 'better-sqlite3';
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 import { CACHE_PATH } from './constants.js';
@@ -34,6 +40,8 @@ const migrateFromTextFiles = (database: SqliteDatabase.Database): void => {
     VALUES (?, ?, unixepoch(), unixepoch())
   `);
 
+  const migratedFiles: string[] = [];
+
   const migrate = database.transaction((fileNames: string[]) => {
     for (const file of fileNames) {
       const scraperId = file;
@@ -51,6 +59,7 @@ const migrateFromTextFiles = (database: SqliteDatabase.Database): void => {
         logger.info(
           `Migrated ${ids.length} cache entries from ${file} to SQLite`,
         );
+        migratedFiles.push(filePath);
       } catch {
         // Skip files that can't be read during migration
       }
@@ -58,6 +67,15 @@ const migrateFromTextFiles = (database: SqliteDatabase.Database): void => {
   });
 
   migrate(files);
+
+  for (const filePath of migratedFiles) {
+    try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- Path is derived from controlled cache directory
+      unlinkSync(filePath);
+    } catch {
+      // Ignore cleanup failures
+    }
+  }
 };
 
 const initializeDatabase = (): SqliteDatabase.Database => {

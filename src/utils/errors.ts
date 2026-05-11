@@ -3,6 +3,12 @@ import { logger } from './logger.js';
 import { errorWebhook } from './webhooks.js';
 
 export const registerGlobalErrorHandlers = () => {
+  process.on('SIGTERM', () => {
+    logger.info('Received SIGTERM, shutting down gracefully');
+    closeCache();
+    process.exitCode = 0;
+  });
+
   process.on('unhandledRejection', async (reason) => {
     logger.error({ reason }, 'Unhandled Promise Rejection');
 
