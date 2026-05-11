@@ -3,10 +3,17 @@ import { logger } from './logger.js';
 import { errorWebhook } from './webhooks.js';
 
 export const registerGlobalErrorHandlers = () => {
-  process.on('SIGTERM', () => {
-    logger.info('Received SIGTERM, shutting down gracefully');
+  const handleShutdown = (signal: string) => {
+    logger.info(`Received ${signal}, shutting down gracefully`);
     closeCache();
     process.exitCode = 0;
+  };
+
+  process.on('SIGTERM', () => {
+    handleShutdown('SIGTERM');
+  });
+  process.on('SIGINT', () => {
+    handleShutdown('SIGINT');
   });
 
   process.on('unhandledRejection', async (reason) => {
