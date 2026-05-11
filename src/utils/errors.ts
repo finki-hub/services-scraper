@@ -31,7 +31,7 @@ export const registerGlobalErrorHandlers = () => {
       logger.error({ error }, 'Failed to send exception to webhook');
     }
 
-    // eslint-disable-next-line n/no-process-exit
+    // eslint-disable-next-line n/no-process-exit -- Must exit on uncaught exception to prevent undefined state
     process.exit(1);
   });
 };

@@ -1,11 +1,11 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import pino from 'pino';
+import pinoLogger from 'pino';
 
 const logsDir = join('.', 'logs');
 await mkdir(logsDir, { recursive: true });
 
-const transport = pino.transport({
+const transport = pinoLogger.transport({
   targets: [
     {
       level: 'info',
@@ -25,4 +25,4 @@ const transport = pino.transport({
   ],
 });
 
-export const logger = pino(transport);
+export const logger = pinoLogger(transport);
