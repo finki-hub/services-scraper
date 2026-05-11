@@ -6,6 +6,8 @@ import { ContainerBuilder, heading, hyperlink } from 'discord.js';
 import type { PostData } from '../lib/Post.js';
 import type { ScraperStrategy } from '../lib/Scraper.js';
 
+import { truncateString } from '../utils/components.js';
+
 export class ExampleStrategy implements ScraperStrategy {
   public idsSelector = 'Selector for a unique identifier within each container';
 
@@ -23,7 +25,7 @@ export class ExampleStrategy implements ScraperStrategy {
     const url = $element.find('a').attr('href')?.trim();
     const link = url ?? null;
 
-    const title = $element.find('a').text().trim() || '?';
+    const title = truncateString($element.find('a').text().trim() || '?');
 
     const component = new ContainerBuilder().addTextDisplayComponents(
       (textDisplayComponent) =>

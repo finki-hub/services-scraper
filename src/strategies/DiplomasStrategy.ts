@@ -50,7 +50,9 @@ export class DiplomasStrategy implements ScraperStrategy {
   }
 
   public getPostData($element: Cheerio<Element>): PostData {
-    const title = $element.find('div.panel-heading').text().trim() || '?';
+    const title = truncateString(
+      $element.find('div.panel-heading').text().trim() || '?',
+    );
 
     const $rows = $element.find('div.panel-body table tr');
 
@@ -64,11 +66,11 @@ export class DiplomasStrategy implements ScraperStrategy {
       .map((s) => s.trim());
 
     const index = rawIndex ?? '?';
-    const student = rawStudent ?? '?';
+    const student = truncateString(rawStudent ?? '?', 100);
 
-    const mentor = cellText(1);
-    const member1 = cellText(2);
-    const member2 = cellText(3);
+    const mentor = truncateString(cellText(1), 100);
+    const member1 = truncateString(cellText(2), 100);
+    const member2 = truncateString(cellText(3), 100);
 
     const content = cellText(7);
 

@@ -59,12 +59,14 @@ export class CourseStrategy implements ScraperStrategy {
 
     const $authorAnchor = $element.find('div.mb-3 a');
 
-    const authorName = $authorAnchor.text().trim() || '?';
+    const authorName = truncateString($authorAnchor.text().trim() || '?', 100);
     const authorLink = $authorAnchor.attr('href') ?? null;
 
     const content = $element.find('div.post-content-container').text().trim();
 
-    const title = $element.find('h4 > a:last-of-type').text().trim() || '?';
+    const title = truncateString(
+      $element.find('h4 > a:last-of-type').text().trim() || '?',
+    );
 
     const textDisplayComponents = [
       new TextDisplayBuilder().setContent(

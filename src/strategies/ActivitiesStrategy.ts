@@ -49,9 +49,10 @@ export class ActivitiesStrategy implements ScraperStrategy {
   }
 
   public getPostData($element: Cheerio<Element>): PostData {
-    const name =
+    const name = truncateString(
       $element.find('div.activity-item').attr('data-activityname')?.trim() ??
-      '?';
+        '?',
+    );
 
     const link =
       $element.find('div.activityname > a').attr('href')?.trim() ?? null;

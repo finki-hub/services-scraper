@@ -6,6 +6,7 @@ import { type Element } from 'domhandler';
 import type { PostData } from '../lib/Post.js';
 
 import { type ScraperStrategy } from '../lib/Scraper.js';
+import { truncateString } from '../utils/components.js';
 
 export class AnnouncementsStrategy implements ScraperStrategy {
   public idsSelector = 'a';
@@ -24,7 +25,7 @@ export class AnnouncementsStrategy implements ScraperStrategy {
     const url = $element.find('a').attr('href')?.trim();
     const link = url === undefined ? null : `https://finki.ukim.mk${url}`;
 
-    const title = $element.find('a').text().trim() || '?';
+    const title = truncateString($element.find('a').text().trim() || '?');
 
     const component = new ContainerBuilder().addTextDisplayComponents(
       (textDisplayComponent) =>

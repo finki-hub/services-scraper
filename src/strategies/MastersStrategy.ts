@@ -49,7 +49,7 @@ export class MastersStrategy implements ScraperStrategy {
   }
 
   public getPostData($element: Cheerio<Element>): PostData {
-    const title = $element.find('h5').text().trim() || '?';
+    const title = truncateString($element.find('h5').text().trim() || '?');
 
     const $rows = $element.find('table tbody tr');
 
@@ -64,11 +64,11 @@ export class MastersStrategy implements ScraperStrategy {
     const firstName =
       $studentCell.find('span:nth-of-type(3)').text().trim() || '?';
 
-    const student = `${lastName} ${firstName}`.trim();
+    const student = truncateString(`${lastName} ${firstName}`.trim(), 100);
 
-    const mentor = cellText(1);
-    const president = cellText(2);
-    const member = cellText(3);
+    const mentor = truncateString(cellText(1), 100);
+    const president = truncateString(cellText(2), 100);
+    const member = truncateString(cellText(3), 100);
     const content = cellText(8);
 
     const component = new ContainerBuilder()

@@ -30,7 +30,7 @@ export class JobsStrategy implements ScraperStrategy {
     const url = $element.find('a + a').attr('href')?.trim();
     const link = url === undefined ? null : `https://finki.ukim.mk${url}`;
 
-    const title = $element.find('a + a').text().trim() || '?';
+    const title = truncateString($element.find('a + a').text().trim() || '?');
 
     const content =
       $element

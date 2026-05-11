@@ -51,28 +51,38 @@ export class InternshipsStrategy implements ScraperStrategy {
     const link =
       url === undefined ? null : `https://internships.finki.ukim.mk${url}`;
 
-    const title = $element.find('h5.card-title').text().trim() || '?';
+    const title = truncateString(
+      $element.find('h5.card-title').text().trim() || '?',
+    );
 
     const description = $element.find('p.card-text').text().trim() || '?';
 
     const company =
-      $element
-        .find('p.mb-2.text-secondary.small i.bi-building')
-        .parent()
-        .find('span')
-        .text()
-        .trim() || null;
+      truncateString(
+        $element
+          .find('p.mb-2.text-secondary.small i.bi-building')
+          .parent()
+          .find('span')
+          .text()
+          .trim() || '',
+        100,
+      ) || null;
 
     const deadline =
-      $element
-        .find('p.mb-0.text-secondary.small i.bi-calendar-x')
-        .parent()
-        .find('span span')
-        .text()
-        .trim()
-        .replace('Активен до: ', '') || null;
+      truncateString(
+        $element
+          .find('p.mb-0.text-secondary.small i.bi-calendar-x')
+          .parent()
+          .find('span span')
+          .text()
+          .trim()
+          .replace('Активен до: ', '') || '',
+        100,
+      ) || null;
 
-    const status = $element.find('span.badge').text().trim() || null;
+    const status =
+      truncateString($element.find('span.badge').text().trim() || '', 100) ||
+      null;
 
     let containerBuilder = new ContainerBuilder()
       .addTextDisplayComponents((textDisplayComponent) =>
