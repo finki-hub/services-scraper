@@ -4,6 +4,9 @@ node_modules
 # Output
 dist
 
+# Cache
+cache
+
 # Logs
 logs
 *.log
@@ -25,6 +28,7 @@ config
 eslint.config.js
 
 # Git
+.git
 .gitattributes
 .gitignore
 
@@ -34,5 +38,11 @@ LICENSE
 *.md
 
 # Docker
+.dockerignore
+Dockerfile
 compose.yaml
 compose.*.yaml
+
+# IDEs
+.idea
+.vscode
