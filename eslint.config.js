@@ -6,9 +6,9 @@ import {
   typescript,
 } from 'eslint-config-imperium';
 
-export default [
-  { ignores: ['dist/', '.devcontainer/', 'db/', 'pgadmin/', 'logs/'] },
-  base,
+const config = [
+  { ignores: ['dist/', 'logs/'] },
+  ...base,
   node,
   typescript,
   prettier,
@@ -20,3 +20,5 @@ export default [
     },
   },
 ];
+
+export default config;
