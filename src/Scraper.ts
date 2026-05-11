@@ -113,14 +113,14 @@ export class Scraper {
       return;
     }
 
-    const isValidCookie = Boolean(
-      this.strategy.scraperService &&
-      this.cookie &&
+    const isValidCookie =
+      this.strategy.scraperService !== undefined &&
+      this.cookie !== undefined &&
+      this.cookie !== '' &&
       (await isCookieHeaderValid({
         cookieHeader: this.cookie,
         service: this.strategy.scraperService,
-      })),
-    );
+      }));
 
     if (!isValidCookie) {
       this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.cookieInvalid}`);
@@ -130,12 +130,10 @@ export class Scraper {
 
   private async fetchData(): Promise<Response> {
     try {
-      const response = await fetch(
+      return await fetch(
         this.scraperConfig.link,
         this.strategy.getRequestInit?.(this.cookie),
       );
-
-      return response;
     } catch (error) {
       throw new Error(ERROR_MESSAGES.fetchFailed, {
         cause: error,
@@ -173,7 +171,12 @@ export class Scraper {
       return [];
     }
 
-    const validPosts = await this.processNewPosts($, posts, cache, checkCache);
+    const validPosts = await this.processNewPosts({
+      $,
+      cache,
+      checkCache,
+      posts,
+    });
     await this.writeCacheFile(ids);
 
     const sendPosts = getConfigProperty('sendPosts');
@@ -222,7 +225,7 @@ export class Scraper {
     context?: string,
     code?: string,
   ): Promise<void> {
-    let errorMessage = 'Unknown error';
+    let errorMessage: string;
     let stackTrace: string | undefined;
 
     if (Error.isError(error)) {
@@ -286,12 +289,13 @@ export class Scraper {
     );
   }
 
-  private async processNewPosts(
-    $: CheerioAPI,
-    posts: Element[],
-    cache: string[],
-    checkCache: boolean,
-  ): Promise<Array<JSONEncodable<APIMessageTopLevelComponent>>> {
+  private async processNewPosts(options: {
+    $: CheerioAPI;
+    cache: string[];
+    checkCache: boolean;
+    posts: Element[];
+  }): Promise<Array<JSONEncodable<APIMessageTopLevelComponent>>> {
+    const { $, cache, checkCache, posts } = options;
     const allPosts = this.strategy.filterPosts?.(posts) ?? posts.toReversed();
     const validPosts: Array<JSONEncodable<APIMessageTopLevelComponent>> = [];
     const sendPosts = getConfigProperty('sendPosts');
@@ -336,12 +340,15 @@ export class Scraper {
   }
 
   private async readCacheFile(): Promise<string[]> {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- CACHE_PATH is a controlled constant
     if (!existsSync(CACHE_PATH)) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- CACHE_PATH is a controlled constant
       await mkdir(CACHE_PATH, {
         recursive: true,
       });
     }
 
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Path is derived from controlled scraper name
     const content = await readFile(this.getFullCachePath(), {
       encoding: 'utf8',
       flag: 'a+',
@@ -370,6 +377,7 @@ export class Scraper {
   }
 
   private async writeCacheFile(ids: Array<null | string>): Promise<void> {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Path is derived from controlled scraper name
     await writeFile(this.getFullCachePath(), ids.join('\n'), {
       encoding: 'utf8',
       flag: 'w',
