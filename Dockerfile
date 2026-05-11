@@ -1,11 +1,8 @@
 FROM node:24-slim AS build
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
-
 COPY package.json package-lock.json ./
 RUN npm ci
-RUN test -f node_modules/better-sqlite3/build/Release/better_sqlite3.node
 
 COPY . ./
 RUN npm run build
