@@ -26,7 +26,7 @@ const cleanPartnerName = (name: null | string): null | string => {
 
 const isSupportedByPartner = (url: string): boolean => {
   try {
-    const { hostname } = new URL(url, 'http://dummy-base/');
+    const { hostname } = new URL(url, 'https://dummy-base/');
     return hostname === 'a1.mk';
   } catch {
     return false;

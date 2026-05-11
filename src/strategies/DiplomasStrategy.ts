@@ -36,7 +36,7 @@ export class DiplomasStrategy implements ScraperStrategy {
 
     await auth.authenticate(Service.DIPLOMAS);
 
-    return await auth.buildCookieHeader(Service.DIPLOMAS);
+    return auth.buildCookieHeader(Service.DIPLOMAS);
   }
 
   public getId($element: Cheerio<Element>): null | string {

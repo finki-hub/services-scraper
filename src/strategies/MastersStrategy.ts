@@ -35,7 +35,7 @@ export class MastersStrategy implements ScraperStrategy {
 
     await auth.authenticate(Service.MASTERS);
 
-    return await auth.buildCookieHeader(Service.MASTERS);
+    return auth.buildCookieHeader(Service.MASTERS);
   }
 
   public getId($element: Cheerio<Element>): null | string {

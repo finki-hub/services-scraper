@@ -35,7 +35,7 @@ export class InternshipsStrategy implements ScraperStrategy {
 
     await auth.authenticate(Service.INTERNSHIPS);
 
-    return await auth.buildCookieHeader(Service.INTERNSHIPS);
+    return auth.buildCookieHeader(Service.INTERNSHIPS);
   }
 
   public getId($element: Cheerio<Element>): null | string {

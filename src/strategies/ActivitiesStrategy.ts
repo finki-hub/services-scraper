@@ -17,6 +17,8 @@ import { getConfigProperty } from '../configuration/config.js';
 import { truncateString } from '../utils/components.js';
 import { ACTIVITY_TYPES } from '../utils/constants.js';
 
+const whitespaceRegex = /\s+/u;
+
 export class ActivitiesStrategy implements ScraperStrategy {
   public idsSelector = 'li.activity';
 
@@ -37,7 +39,7 @@ export class ActivitiesStrategy implements ScraperStrategy {
 
     await auth.authenticate(Service.COURSES);
 
-    return await auth.buildCookieHeader(Service.COURSES);
+    return auth.buildCookieHeader(Service.COURSES);
   }
 
   public getId($element: Cheerio<Element>): null | string {
@@ -58,7 +60,7 @@ export class ActivitiesStrategy implements ScraperStrategy {
       $element.find('div.activity-altcontent').text().trim() || null;
 
     const classString = $element.attr('class') ?? '';
-    const rawType = classString.split(/\s+/u)[2] ?? '';
+    const rawType = classString.split(whitespaceRegex)[2] ?? '';
     const type = ACTIVITY_TYPES[rawType] ?? null;
 
     const component = new ContainerBuilder().addTextDisplayComponents(

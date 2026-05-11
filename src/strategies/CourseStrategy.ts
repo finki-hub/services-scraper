@@ -40,7 +40,7 @@ export class CourseStrategy implements ScraperStrategy {
 
     await auth.authenticate(Service.COURSES);
 
-    return await auth.buildCookieHeader(Service.COURSES);
+    return auth.buildCookieHeader(Service.COURSES);
   }
 
   public getId($element: Cheerio<Element>): null | string {
