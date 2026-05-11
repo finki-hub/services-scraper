@@ -1,3 +1,4 @@
+import { closeCache } from './cache.js';
 import { logger } from './logger.js';
 import { errorWebhook } from './webhooks.js';
 
@@ -30,6 +31,8 @@ export const registerGlobalErrorHandlers = () => {
     } catch (error: unknown) {
       logger.error({ error }, 'Failed to send exception to webhook');
     }
+
+    closeCache();
 
     // eslint-disable-next-line n/no-process-exit -- Must exit on uncaught exception to prevent undefined state
     process.exit(1);

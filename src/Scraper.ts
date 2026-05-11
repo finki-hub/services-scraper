@@ -10,15 +10,14 @@ import {
 } from 'discord.js';
 import { type Element, isTag } from 'domhandler';
 import { isCookieHeaderValid } from 'finki-auth';
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { setTimeout } from 'node:timers/promises';
 import { type Logger } from 'pino';
 
 import { getConfigProperty } from './configuration/config.js';
 import { type ScraperConfig, type ScraperStrategy } from './lib/Scraper.js';
+import { getSeenPostIds, markPostsSeen } from './utils/cache.js';
 import { createMentionComponent, truncateString } from './utils/components.js';
-import { CACHE_PATH, ERROR_MESSAGES, LOG_MESSAGES } from './utils/constants.js';
+import { ERROR_MESSAGES, LOG_MESSAGES } from './utils/constants.js';
 import { extractErrorCauses } from './utils/errors.js';
 import { logger } from './utils/logger.js';
 import { createStrategy } from './utils/strategies.js';
@@ -73,10 +72,6 @@ export class Scraper {
     if (statusCode !== 200) {
       throw new Error(`${ERROR_MESSAGES.badResponseCode}: ${statusCode}`);
     }
-  }
-
-  public getFullCachePath(): string {
-    return `./${CACHE_PATH}/${this.scraperName}`;
   }
 
   public async run(): Promise<void> {
@@ -161,11 +156,11 @@ export class Scraper {
 
     const $ = cheerio.load(text);
 
-    const cache = await this.readCacheFile();
+    const seenIds = getSeenPostIds(this.scraperName);
     const posts = this.getPostsFromDOM($);
     const ids = this.getIdsFromPosts($, posts);
 
-    if (checkCache && this.hasNoNewPosts(ids, cache)) {
+    if (checkCache && this.hasNoNewPosts(ids, seenIds)) {
       this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.noNewPosts}`);
 
       return [];
@@ -173,11 +168,11 @@ export class Scraper {
 
     const validPosts = await this.processNewPosts({
       $,
-      cache,
       checkCache,
       posts,
+      seenIds,
     });
-    await this.writeCacheFile(ids);
+    markPostsSeen(this.scraperName, ids);
 
     const sendPosts = getConfigProperty('sendPosts');
 
@@ -282,20 +277,17 @@ export class Scraper {
     }
   }
 
-  private hasNoNewPosts(ids: Array<null | string>, cache: string[]) {
-    return (
-      ids.length === cache.length &&
-      ids.every((value) => value === null || cache.includes(value))
-    );
+  private hasNoNewPosts(ids: Array<null | string>, seenIds: Set<string>) {
+    return ids.every((id) => id === null || seenIds.has(id));
   }
 
   private async processNewPosts(options: {
     $: CheerioAPI;
-    cache: string[];
     checkCache: boolean;
     posts: Element[];
+    seenIds: Set<string>;
   }): Promise<Array<JSONEncodable<APIMessageTopLevelComponent>>> {
-    const { $, cache, checkCache, posts } = options;
+    const { $, checkCache, posts, seenIds } = options;
     const allPosts = this.strategy.filterPosts?.(posts) ?? posts.toReversed();
     const validPosts: Array<JSONEncodable<APIMessageTopLevelComponent>> = [];
     const sendPosts = getConfigProperty('sendPosts');
@@ -313,7 +305,7 @@ export class Scraper {
         continue;
       }
 
-      if (checkCache && cache.includes(id)) {
+      if (checkCache && seenIds.has(id)) {
         this.logger.info(
           `[${this.scraperName}] ${LOG_MESSAGES.postAlreadySent}: ${id}`,
         );
@@ -339,24 +331,6 @@ export class Scraper {
     return validPosts;
   }
 
-  private async readCacheFile(): Promise<string[]> {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- CACHE_PATH is a controlled constant
-    if (!existsSync(CACHE_PATH)) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- CACHE_PATH is a controlled constant
-      await mkdir(CACHE_PATH, {
-        recursive: true,
-      });
-    }
-
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Path is derived from controlled scraper name
-    const content = await readFile(this.getFullCachePath(), {
-      encoding: 'utf8',
-      flag: 'a+',
-    });
-
-    return content.trim().split('\n').filter(Boolean);
-  }
-
   private async sendPost(
     component: JSONEncodable<APIMessageTopLevelComponent>,
     id: string,
@@ -374,13 +348,5 @@ export class Scraper {
       withComponents: true,
     });
     this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.postSent}: ${id}`);
-  }
-
-  private async writeCacheFile(ids: Array<null | string>): Promise<void> {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Path is derived from controlled scraper name
-    await writeFile(this.getFullCachePath(), ids.join('\n'), {
-      encoding: 'utf8',
-      flag: 'w',
-    });
   }
 }
