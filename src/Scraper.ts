@@ -332,7 +332,10 @@ export class Scraper {
         ? undefined
         : createMentionComponent(this.scraperConfig.role);
 
-    const chunkSize = mentionComponent ? 9 : 10;
+    // Discord allows 40 total components per message. The heaviest strategy
+    // (Diplomas/Masters) builds ~9 components per post. 4 posts × 9 = 36,
+    // plus 1 mention = 37. Well under the 40 limit.
+    const chunkSize = 4;
 
     for (let index = 0; index < components.length; index += chunkSize) {
       const chunk = components.slice(index, index + chunkSize);
