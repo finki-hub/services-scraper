@@ -1,12 +1,15 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
+import { z } from 'zod';
 
 import { CACHE_PATH } from './constants.js';
 import { logger } from './logger.js';
 
 const DB_FILE_NAME = 'scraper-cache.db';
 const DB_PATH = join(CACHE_PATH, DB_FILE_NAME);
+
+const PostIdRowsSchema = z.array(z.tuple([z.string()]));
 
 let db: DatabaseSync | undefined;
 let selectStatement: StatementSync | undefined;
@@ -81,18 +84,9 @@ const getInsertStatement = (): StatementSync => {
 
 export const getSeenPostIds = (scraperId: string): Set<string> => {
   const select = getSelectStatement();
-  const rows = select.all(scraperId) as unknown as string[][];
-  const ids = new Set<string>();
+  const rows = PostIdRowsSchema.parse(select.all(scraperId));
 
-  for (const row of rows) {
-    const id = row[0];
-
-    if (typeof id === 'string') {
-      ids.add(id);
-    }
-  }
-
-  return ids;
+  return new Set(rows.map(([id]) => id));
 };
 
 export const markPostsSeen = (
