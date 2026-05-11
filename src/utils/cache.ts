@@ -1,6 +1,6 @@
-import SqliteDatabase from 'better-sqlite3';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync, type StatementSync } from 'node:sqlite';
 
 import { CACHE_PATH } from './constants.js';
 import { logger } from './logger.js';
@@ -8,9 +8,11 @@ import { logger } from './logger.js';
 const DB_FILE_NAME = 'scraper-cache.db';
 const DB_PATH = join(CACHE_PATH, DB_FILE_NAME);
 
-let db: SqliteDatabase.Database | undefined;
+let db: DatabaseSync | undefined;
+let selectStatement: StatementSync | undefined;
+let insertStatement: StatementSync | undefined;
 
-const initializeDatabase = (): SqliteDatabase.Database => {
+const initializeDatabase = (): DatabaseSync => {
   if (db !== undefined) {
     return db;
   }
@@ -22,7 +24,7 @@ const initializeDatabase = (): SqliteDatabase.Database => {
   }
 
   try {
-    db = new SqliteDatabase(DB_PATH);
+    db = new DatabaseSync(DB_PATH);
   } catch (error) {
     logger.error(
       { error },
@@ -31,10 +33,10 @@ const initializeDatabase = (): SqliteDatabase.Database => {
     throw new Error('Failed to open SQLite cache database', { cause: error });
   }
 
-  db.pragma('journal_mode = WAL');
-  db.pragma('synchronous = NORMAL');
-
   db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = NORMAL;
+
     CREATE TABLE IF NOT EXISTS seen_posts (
       scraper_id    TEXT    NOT NULL,
       post_id       TEXT    NOT NULL,
@@ -47,30 +49,50 @@ const initializeDatabase = (): SqliteDatabase.Database => {
   return db;
 };
 
-const getSelectStatement = (): SqliteDatabase.Statement => {
-  const database = initializeDatabase();
+const getSelectStatement = (): StatementSync => {
+  if (selectStatement !== undefined) {
+    return selectStatement;
+  }
 
-  return database
-    .prepare('SELECT post_id FROM seen_posts WHERE scraper_id = ?')
-    .pluck();
+  const database = initializeDatabase();
+  selectStatement = database.prepare(
+    'SELECT post_id FROM seen_posts WHERE scraper_id = ?',
+  );
+  selectStatement.setReturnArrays(true);
+
+  return selectStatement;
 };
 
-const getInsertStatement = (): SqliteDatabase.Statement => {
-  const database = initializeDatabase();
+const getInsertStatement = (): StatementSync => {
+  if (insertStatement !== undefined) {
+    return insertStatement;
+  }
 
-  return database.prepare(`
+  const database = initializeDatabase();
+  insertStatement = database.prepare(`
     INSERT INTO seen_posts (scraper_id, post_id, first_seen_at, last_seen_at)
     VALUES (?, ?, unixepoch(), unixepoch())
     ON CONFLICT(scraper_id, post_id) DO UPDATE SET
       last_seen_at = unixepoch()
   `);
+
+  return insertStatement;
 };
 
 export const getSeenPostIds = (scraperId: string): Set<string> => {
   const select = getSelectStatement();
-  const rows = select.all(scraperId) as string[];
+  const rows = select.all(scraperId) as unknown as string[][];
+  const ids = new Set<string>();
 
-  return new Set(rows);
+  for (const row of rows) {
+    const id = row[0];
+
+    if (typeof id === 'string') {
+      ids.add(id);
+    }
+  }
+
+  return ids;
 };
 
 export const markPostsSeen = (
@@ -83,18 +105,26 @@ export const markPostsSeen = (
     return;
   }
 
+  const database = initializeDatabase();
   const insert = getInsertStatement();
 
-  const transaction = initializeDatabase().transaction((ids: string[]) => {
-    for (const id of ids) {
+  database.exec('BEGIN');
+
+  try {
+    for (const id of validIds) {
       insert.run(scraperId, id);
     }
-  });
 
-  transaction(validIds);
+    database.exec('COMMIT');
+  } catch (error) {
+    database.exec('ROLLBACK');
+    throw error;
+  }
 };
 
 export const closeCache = (): void => {
+  selectStatement = undefined;
+  insertStatement = undefined;
   db?.close();
   db = undefined;
 };
