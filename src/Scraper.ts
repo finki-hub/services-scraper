@@ -172,7 +172,6 @@ export class Scraper {
       posts,
       seenIds,
     });
-    markPostsSeen(this.scraperName, ids);
 
     const sendPosts = getConfigProperty('sendPosts');
 
@@ -180,6 +179,8 @@ export class Scraper {
       await this.sendBatch(validPosts);
       logger.info(`[${this.scraperName}] ${LOG_MESSAGES.sentNewPosts}`);
     }
+
+    markPostsSeen(this.scraperName, ids);
 
     return validPosts;
   }
@@ -355,6 +356,8 @@ export class Scraper {
           error,
           `while sending batch of ${chunk.length} posts`,
         );
+
+        throw error;
       }
     }
   }
