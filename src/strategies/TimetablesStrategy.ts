@@ -7,7 +7,7 @@ import type { PostData } from '../lib/Post.js';
 
 import { truncateString } from '../utils/components.js';
 import { normalizeURL } from '../utils/links.js';
-import { HtmlStrategy } from './HtmlStrategy.js';
+import { HtmlStrategy } from './base/HtmlStrategy.js';
 
 export class TimetablesStrategy extends HtmlStrategy {
   public idsSelector = 'a';

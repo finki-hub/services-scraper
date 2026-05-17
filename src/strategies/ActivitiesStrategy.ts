@@ -14,7 +14,7 @@ import type { PostData } from '../lib/Post.js';
 
 import { truncateString } from '../utils/components.js';
 import { ACTIVITY_TYPES } from '../utils/constants.js';
-import { HtmlStrategy } from './HtmlStrategy.js';
+import { HtmlStrategy } from './base/HtmlStrategy.js';
 
 const whitespaceRegex = /\s+/u;
 

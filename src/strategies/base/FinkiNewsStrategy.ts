@@ -8,9 +8,9 @@ import {
   TextDisplayBuilder,
 } from 'discord.js';
 
-import type { PostData } from '../lib/Post.js';
+import type { PostData } from '../../lib/Post.js';
 
-import { truncateString } from '../utils/components.js';
+import { truncateString } from '../../utils/components.js';
 import { HtmlStrategy } from './HtmlStrategy.js';
 
 export abstract class FinkiNewsStrategy extends HtmlStrategy {

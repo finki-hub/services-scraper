@@ -4,17 +4,17 @@ import * as cheerio from 'cheerio';
 import { type Element, isTag } from 'domhandler';
 import { CasAuthentication, type Service } from 'finki-auth';
 
-import type { PostData } from '../lib/Post.js';
+import type { PostData } from '../../lib/Post.js';
 import type {
   ScraperStrategy,
   StrategyContext,
   StrategyResult,
-} from '../lib/Scraper.js';
+} from '../../lib/Scraper.js';
 
-import { getConfigProperty } from '../configuration/config.js';
-import { getSeenPostIds, markPostsSeen } from '../utils/cache.js';
-import { ERROR_MESSAGES } from '../utils/constants.js';
-import { logger } from '../utils/logger.js';
+import { getConfigProperty } from '../../configuration/config.js';
+import { getSeenPostIds, markPostsSeen } from '../../utils/cache.js';
+import { ERROR_MESSAGES } from '../../utils/constants.js';
+import { logger } from '../../utils/logger.js';
 
 const NO_CHANGES: StrategyResult = {
   commit: () => {},

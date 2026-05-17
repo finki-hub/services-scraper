@@ -6,7 +6,7 @@ import { ContainerBuilder, heading, hyperlink } from 'discord.js';
 import type { PostData } from '../lib/Post.js';
 
 import { truncateString } from '../utils/components.js';
-import { HtmlStrategy } from './HtmlStrategy.js';
+import { HtmlStrategy } from './base/HtmlStrategy.js';
 
 export class ExampleStrategy extends HtmlStrategy {
   public idsSelector = 'Selector for a unique identifier within each container';
