@@ -326,79 +326,80 @@ export class EduPageStrategy implements ScraperStrategy {
     const { cardId, currentCard, previousCard, ttNum } = options;
     const subject =
       currentCard?.subject ?? previousCard?.subject ?? 'Непознат предмет';
+    const classes = stringifyValue(
+      currentCard?.classes ?? previousCard?.classes ?? [],
+    );
     const timestamp = Date.now();
-    const lines = CARD_FIELDS.flatMap((field) => {
-      const previousValue = previousCard?.[field] ?? '';
-      const currentValue = currentCard?.[field] ?? '';
 
-      if (stringifyValue(previousValue) === stringifyValue(currentValue)) {
-        return [];
-      }
-
-      return [
-        bold(FIELD_LABELS[field]),
-        `${bold('Пред:')} ${truncateString(stringifyValue(previousValue), 250)}`,
-        `${bold('После:')} ${truncateString(stringifyValue(currentValue), 250)}`,
-      ];
-    });
-
-    const component = new ContainerBuilder()
+    let container = new ContainerBuilder()
       .addTextDisplayComponents((textDisplayComponent) =>
         textDisplayComponent.setContent(
           heading(truncateString(subject, 200), 3),
         ),
       )
-      .addSeparatorComponents((separatorComponent) =>
-        separatorComponent.setSpacing(SeparatorSpacingSize.Small),
-      )
       .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(lines.join('\n')),
+        textDisplayComponent.setContent(classes),
+      )
+      .addSeparatorComponents((separatorComponent) =>
+        separatorComponent.setSpacing(SeparatorSpacingSize.Large),
       );
 
+    for (const field of CARD_FIELDS) {
+      const previousValue = previousCard?.[field] ?? '';
+      const currentValue = currentCard?.[field] ?? '';
+      const previousStr = stringifyValue(previousValue);
+      const currentStr = stringifyValue(currentValue);
+
+      if (previousStr === currentStr) {
+        continue;
+      }
+
+      container = container
+        .addTextDisplayComponents((textDisplayComponent) =>
+          textDisplayComponent.setContent(bold(FIELD_LABELS[field])),
+        )
+        .addTextDisplayComponents((textDisplayComponent) =>
+          textDisplayComponent.setContent(
+            `~~${truncateString(previousStr, 200)}~~ → ${truncateString(currentStr, 200)}`,
+          ),
+        )
+        .addSeparatorComponents((separatorComponent) =>
+          separatorComponent
+            .setSpacing(SeparatorSpacingSize.Small)
+            .setDivider(false),
+        );
+    }
+
     return {
-      component,
+      component: container,
       id: `change:${ttNum}:${cardId}:${timestamp}`,
     };
   }
 
-  private createDefaultChangedPost(timetable: ListingTimetable): PostData {
+  private createTimetablePost(
+    title: string,
+    id: string,
+    timetable: ListingTimetable,
+  ): PostData {
     const component = new ContainerBuilder()
       .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(heading('Нов активен распоред', 2)),
-      )
-      .addSeparatorComponents((separatorComponent) =>
-        separatorComponent.setSpacing(SeparatorSpacingSize.Small),
+        textDisplayComponent.setContent(heading(title, 2)),
       )
       .addTextDisplayComponents((textDisplayComponent) =>
         textDisplayComponent.setContent(
-          `${bold('Распоред:')} ${truncateString(getDisplayName(timetable), 300)}\n${bold('Период:')} ${formatTimetableRange(timetable)}`,
+          heading(truncateString(getDisplayName(timetable), 300), 3),
         ),
-      );
-
-    return {
-      component,
-      id: `default-tt:${timetable.tt_num}`,
-    };
-  }
-
-  private createNewTimetablePost(timetable: ListingTimetable): PostData {
-    const component = new ContainerBuilder()
-      .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(heading('Нов распоред на EduPage', 2)),
       )
       .addSeparatorComponents((separatorComponent) =>
-        separatorComponent.setSpacing(SeparatorSpacingSize.Small),
+        separatorComponent.setSpacing(SeparatorSpacingSize.Large),
       )
       .addTextDisplayComponents((textDisplayComponent) =>
         textDisplayComponent.setContent(
-          `${bold('Распоред:')} ${truncateString(getDisplayName(timetable), 300)}\n${bold('Период:')} ${formatTimetableRange(timetable)}`,
+          `${bold('Период:')} ${formatTimetableRange(timetable)}`,
         ),
       );
 
-    return {
-      component,
-      id: `new-tt:${timetable.tt_num}`,
-    };
+    return { component, id };
   }
 
   private async fetchListing(baseUrl: string): Promise<ListingResponse> {
@@ -478,7 +479,13 @@ export class EduPageStrategy implements ScraperStrategy {
     const previousTtNums = new Set(previousSnapshot.ttNums);
     const timetablePosts = timetables
       .filter(({ tt_num: ttNum }) => !previousTtNums.has(ttNum))
-      .map((timetable) => this.createNewTimetablePost(timetable));
+      .map((timetable) =>
+        this.createTimetablePost(
+          'Нов распоред на EduPage',
+          `new-tt:${timetable.tt_num}`,
+          timetable,
+        ),
+      );
 
     if (defaultNum === previousSnapshot.defaultNum) {
       return timetablePosts;
@@ -490,7 +497,14 @@ export class EduPageStrategy implements ScraperStrategy {
 
     return defaultTimetable === undefined
       ? timetablePosts
-      : [...timetablePosts, this.createDefaultChangedPost(defaultTimetable)];
+      : [
+          ...timetablePosts,
+          this.createTimetablePost(
+            'Нов активен распоред',
+            `default-tt:${defaultTimetable.tt_num}`,
+            defaultTimetable,
+          ),
+        ];
   }
 
   private resolveCards(timetable: TimetableResponse): ResolvedCard[] {
