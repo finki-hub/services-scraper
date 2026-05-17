@@ -13,10 +13,7 @@ const PostIdRowsSchema = z.array(z.tuple([z.string()]));
 const SnapshotRowSchema = z.tuple([z.string()]).optional();
 
 let db: DatabaseSync | undefined;
-let seenPostsSelectStatement: StatementSync | undefined;
-let seenPostsUpsertStatement: StatementSync | undefined;
-let snapshotSelectStatement: StatementSync | undefined;
-let snapshotUpsertStatement: StatementSync | undefined;
+const statements = new Map<string, StatementSync>();
 
 const initializeDatabase = (): DatabaseSync => {
   if (db !== undefined) {
@@ -63,38 +60,56 @@ const initializeDatabase = (): DatabaseSync => {
   return db;
 };
 
-const getSeenPostsSelectStatement = (): StatementSync => {
-  if (seenPostsSelectStatement !== undefined) {
-    return seenPostsSelectStatement;
+const prepareStatement = (
+  key: string,
+  sql: string,
+  returnArrays = false,
+): StatementSync => {
+  const cached = statements.get(key);
+
+  if (cached !== undefined) {
+    return cached;
   }
 
   const database = initializeDatabase();
-  seenPostsSelectStatement = database.prepare(
-    'SELECT post_id FROM seen_posts WHERE scraper_id = ?',
-  );
-  seenPostsSelectStatement.setReturnArrays(true);
+  const statement = database.prepare(sql);
 
-  return seenPostsSelectStatement;
-};
-
-const getSeenPostsUpsertStatement = (): StatementSync => {
-  if (seenPostsUpsertStatement !== undefined) {
-    return seenPostsUpsertStatement;
+  if (returnArrays) {
+    statement.setReturnArrays(true);
   }
 
-  const database = initializeDatabase();
-  seenPostsUpsertStatement = database.prepare(`
-    INSERT INTO seen_posts (scraper_id, post_id, first_seen_at, last_seen_at)
-    VALUES (?, ?, unixepoch(), unixepoch())
-    ON CONFLICT(scraper_id, post_id) DO UPDATE SET
-      last_seen_at = unixepoch()
-  `);
+  statements.set(key, statement);
 
-  return seenPostsUpsertStatement;
+  return statement;
 };
+
+const SEEN_POSTS_SELECT_SQL =
+  'SELECT post_id FROM seen_posts WHERE scraper_id = ?';
+
+const SEEN_POSTS_UPSERT_SQL = `
+  INSERT INTO seen_posts (scraper_id, post_id, first_seen_at, last_seen_at)
+  VALUES (?, ?, unixepoch(), unixepoch())
+  ON CONFLICT(scraper_id, post_id) DO UPDATE SET
+    last_seen_at = unixepoch()
+`;
+
+const SNAPSHOT_SELECT_SQL =
+  'SELECT value FROM snapshots WHERE scraper_id = ? AND key = ?';
+
+const SNAPSHOT_UPSERT_SQL = `
+  INSERT INTO snapshots (scraper_id, key, value, updated_at)
+  VALUES (?, ?, ?, unixepoch())
+  ON CONFLICT(scraper_id, key) DO UPDATE SET
+    value = excluded.value,
+    updated_at = unixepoch()
+`;
 
 export const getSeenPostIds = (scraperId: string): Set<string> => {
-  const select = getSeenPostsSelectStatement();
+  const select = prepareStatement(
+    'seenPostsSelect',
+    SEEN_POSTS_SELECT_SQL,
+    true,
+  );
   const rows = PostIdRowsSchema.parse(select.all(scraperId));
 
   return new Set(rows.map(([id]) => id));
@@ -111,7 +126,7 @@ export const markPostsSeen = (
   }
 
   const database = initializeDatabase();
-  const upsert = getSeenPostsUpsertStatement();
+  const upsert = prepareStatement('seenPostsUpsert', SEEN_POSTS_UPSERT_SQL);
 
   database.exec('BEGIN');
 
@@ -127,42 +142,11 @@ export const markPostsSeen = (
   }
 };
 
-const getSnapshotSelectStatement = (): StatementSync => {
-  if (snapshotSelectStatement !== undefined) {
-    return snapshotSelectStatement;
-  }
-
-  const database = initializeDatabase();
-  snapshotSelectStatement = database.prepare(
-    'SELECT value FROM snapshots WHERE scraper_id = ? AND key = ?',
-  );
-  snapshotSelectStatement.setReturnArrays(true);
-
-  return snapshotSelectStatement;
-};
-
-const getSnapshotUpsertStatement = (): StatementSync => {
-  if (snapshotUpsertStatement !== undefined) {
-    return snapshotUpsertStatement;
-  }
-
-  const database = initializeDatabase();
-  snapshotUpsertStatement = database.prepare(`
-    INSERT INTO snapshots (scraper_id, key, value, updated_at)
-    VALUES (?, ?, ?, unixepoch())
-    ON CONFLICT(scraper_id, key) DO UPDATE SET
-      value = excluded.value,
-      updated_at = unixepoch()
-  `);
-
-  return snapshotUpsertStatement;
-};
-
 export const getSnapshot = (
   scraperId: string,
   key: string,
 ): string | undefined => {
-  const select = getSnapshotSelectStatement();
+  const select = prepareStatement('snapshotSelect', SNAPSHOT_SELECT_SQL, true);
   const row = SnapshotRowSchema.parse(select.get(scraperId, key));
 
   return row?.[0];
@@ -173,15 +157,12 @@ export const setSnapshot = (
   key: string,
   value: string,
 ): void => {
-  const upsert = getSnapshotUpsertStatement();
+  const upsert = prepareStatement('snapshotUpsert', SNAPSHOT_UPSERT_SQL);
   upsert.run(scraperId, key, value);
 };
 
 export const closeCache = (): void => {
-  seenPostsSelectStatement = undefined;
-  seenPostsUpsertStatement = undefined;
-  snapshotSelectStatement = undefined;
-  snapshotUpsertStatement = undefined;
+  statements.clear();
   db?.close();
   db = undefined;
 };

@@ -6,22 +6,14 @@ import { type Element } from 'domhandler';
 import type { PostData } from '../lib/Post.js';
 
 import { truncateString } from '../utils/components.js';
-import { HtmlStrategy } from './base/HtmlStrategy.js';
+import { FinkiNewsStrategy } from './base/FinkiNewsStrategy.js';
 
-export class AnnouncementsStrategy extends HtmlStrategy {
-  public idsSelector = 'a';
+export class AnnouncementsStrategy extends FinkiNewsStrategy {
+  public override idsSelector = 'a';
 
-  public postsSelector = 'div.views-row';
+  public override postsSelector = 'div.views-row';
 
-  public getId($element: Cheerio<Element>): null | string {
-    const url = $element.find(this.idsSelector).attr('href')?.trim();
-
-    return url === undefined || url === ''
-      ? null
-      : `https://finki.ukim.mk${url}`;
-  }
-
-  public getPostData($element: Cheerio<Element>): PostData {
+  public override getPostData($element: Cheerio<Element>): PostData {
     const url = $element.find('a').attr('href')?.trim();
     const link = url === undefined ? null : `https://finki.ukim.mk${url}`;
 
