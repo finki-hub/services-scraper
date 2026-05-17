@@ -10,10 +10,10 @@ import {
 
 import type { PostData } from '../lib/Post.js';
 
-import { type ScraperStrategy } from '../lib/Scraper.js';
 import { truncateString } from '../utils/components.js';
+import { HtmlStrategy } from './HtmlStrategy.js';
 
-export class EventsStrategy implements ScraperStrategy {
+export class EventsStrategy extends HtmlStrategy {
   public idsSelector = 'a + a';
 
   public postsSelector = 'div.news-item';

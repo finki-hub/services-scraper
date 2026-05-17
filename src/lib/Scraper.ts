@@ -1,5 +1,3 @@
-import type { Cheerio } from 'cheerio';
-import type { Element } from 'domhandler';
 import type { Service } from 'finki-auth';
 
 import { z } from 'zod';
@@ -21,6 +19,7 @@ export enum Strategy {
   Announcements = 'announcements',
   Course = 'course',
   Diplomas = 'diplomas',
+  EduPage = 'edupage',
   Events = 'events',
   Example = 'example',
   Internships = 'internships',
@@ -34,13 +33,23 @@ export enum Strategy {
 export type ScraperConfig = z.infer<typeof ScraperConfigSchema>;
 
 export type ScraperStrategy = {
+  getChanges: (context: StrategyContext) => Promise<StrategyResult>;
   getCookie?: () => Promise<string>;
-  getId: ($element: Cheerio<Element>) => null | string;
-  getPostData: ($element: Cheerio<Element>) => PostData;
   getRequestInit?: (cookie: string | undefined) => RequestInit | undefined;
-  idsSelector: string;
-  postsSelector: string;
+
   scraperService?: Service;
+};
+
+export type StrategyContext = {
+  cookie: string | undefined;
+  link: string;
+  maxPosts: number;
+  scraperId: string;
+};
+
+export type StrategyResult = {
+  commit: () => void;
+  posts: PostData[];
 };
 
 export const StrategySchema = z.enum(Strategy);

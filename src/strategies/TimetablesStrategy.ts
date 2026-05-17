@@ -4,12 +4,12 @@ import type { Element } from 'domhandler';
 import { ContainerBuilder, heading, hyperlink } from 'discord.js';
 
 import type { PostData } from '../lib/Post.js';
-import type { ScraperStrategy } from '../lib/Scraper.js';
 
 import { truncateString } from '../utils/components.js';
 import { normalizeURL } from '../utils/links.js';
+import { HtmlStrategy } from './HtmlStrategy.js';
 
-export class TimetablesStrategy implements ScraperStrategy {
+export class TimetablesStrategy extends HtmlStrategy {
   public idsSelector = 'a';
 
   public postsSelector = 'div.col-sm-11';

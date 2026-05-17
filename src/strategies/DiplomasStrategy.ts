@@ -13,10 +13,10 @@ import { Service } from 'finki-auth/dist/lib/Service.js';
 import type { PostData } from '../lib/Post.js';
 
 import { getConfigProperty } from '../configuration/config.js';
-import { type ScraperStrategy } from '../lib/Scraper.js';
 import { truncateString } from '../utils/components.js';
+import { HtmlStrategy } from './HtmlStrategy.js';
 
-export class DiplomasStrategy implements ScraperStrategy {
+export class DiplomasStrategy extends HtmlStrategy {
   public idsSelector = 'div.panel-heading';
 
   public postsSelector = 'div.panel';
@@ -117,7 +117,9 @@ export class DiplomasStrategy implements ScraperStrategy {
     };
   }
 
-  public getRequestInit(cookie: string | undefined): RequestInit | undefined {
+  public override getRequestInit(
+    cookie: string | undefined,
+  ): RequestInit | undefined {
     if (cookie === undefined) {
       return undefined;
     }

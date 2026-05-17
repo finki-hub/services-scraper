@@ -4,11 +4,11 @@ import type { Element } from 'domhandler';
 import { ContainerBuilder, heading, hyperlink } from 'discord.js';
 
 import type { PostData } from '../lib/Post.js';
-import type { ScraperStrategy } from '../lib/Scraper.js';
 
 import { truncateString } from '../utils/components.js';
+import { HtmlStrategy } from './HtmlStrategy.js';
 
-export class ExampleStrategy implements ScraperStrategy {
+export class ExampleStrategy extends HtmlStrategy {
   public idsSelector = 'Selector for a unique identifier within each container';
 
   public postsSelector = 'Selector for all data containers';

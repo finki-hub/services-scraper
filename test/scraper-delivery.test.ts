@@ -1,10 +1,8 @@
 import { afterEach, expect, test, vi } from 'vitest';
 
-const stopScraperRegex = /stop scraper/u;
+import type { StrategyResult } from '../src/lib/Scraper.js';
 
-type TestElement = {
-  attr: (name: string) => string | undefined;
-};
+const stopScraperRegex = /stop scraper/u;
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -12,10 +10,7 @@ afterEach(() => {
 });
 
 test('does not mark posts seen when webhook delivery fails', async () => {
-  const markCalls: Array<{
-    postIds: Array<null | string>;
-    scraperId: string;
-  }> = [];
+  const commitCalls: string[] = [];
   const sendError = new Error('webhook down');
 
   vi.doMock('discord.js', () => ({
@@ -71,14 +66,6 @@ test('does not mark posts seen when webhook delivery fails', async () => {
     },
   }));
 
-  vi.doMock('../src/utils/cache.js', () => ({
-    closeCache: () => {},
-    getSeenPostIds: () => new Set<string>(),
-    markPostsSeen: (scraperId: string, postIds: Array<null | string>) => {
-      markCalls.push({ postIds, scraperId });
-    },
-  }));
-
   vi.doMock('../src/utils/logger.js', () => ({
     logger: {
       error: vi.fn<(...args: unknown[]) => void>(),
@@ -88,17 +75,23 @@ test('does not mark posts seen when webhook delivery fails', async () => {
 
   vi.doMock('../src/utils/strategies.js', () => ({
     createStrategy: () => ({
-      getId: ($element: TestElement) => $element.attr('data-id') ?? null,
-      getPostData: ($element: TestElement) => ({
-        component: {
-          toJSON: () => ({
-            components: [],
-            type: 17,
-          }),
-        },
-        id: $element.attr('data-id') ?? null,
-      }),
-      postsSelector: 'article',
+      getChanges: (): Promise<StrategyResult> =>
+        Promise.resolve({
+          commit: () => {
+            commitCalls.push('committed');
+          },
+          posts: [
+            {
+              component: {
+                toJSON: () => ({
+                  components: [],
+                  type: 17,
+                }),
+              },
+              id: 'post-1',
+            },
+          ],
+        }),
     }),
   }));
 
@@ -106,15 +99,11 @@ test('does not mark posts seen when webhook delivery fails', async () => {
     errorWebhook: undefined,
   }));
 
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response('<article data-id="post-1"></article>', { status: 200 }),
-  );
-
   const { Scraper } = await import('../src/Scraper.js');
   vi.spyOn(Scraper, 'sleep').mockRejectedValue(new Error('stop scraper'));
 
   const scraper = new Scraper('delivery');
 
   await expect(scraper.run()).rejects.toThrow(stopScraperRegex);
-  expect(markCalls).toStrictEqual([]);
+  expect(commitCalls).toStrictEqual([]);
 });

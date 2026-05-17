@@ -4,9 +4,9 @@ import type { Element } from 'domhandler';
 import { ContainerBuilder, heading, hyperlink } from 'discord.js';
 
 import type { PostData } from '../lib/Post.js';
-import type { ScraperStrategy } from '../lib/Scraper.js';
 
 import { truncateString } from '../utils/components.js';
+import { HtmlStrategy } from './HtmlStrategy.js';
 
 const PARTNER_LABELS = ['Gold partner', 'Silver partner'] as const;
 
@@ -35,7 +35,7 @@ const isSupportedByPartner = (url: string): boolean => {
   }
 };
 
-export class PartnersStrategy implements ScraperStrategy {
+export class PartnersStrategy extends HtmlStrategy {
   public idsSelector = 'a';
 
   public postsSelector = 'div.card, div.support';

@@ -10,12 +10,12 @@ import {
 import { CasAuthentication, Service } from 'finki-auth';
 
 import type { PostData } from '../lib/Post.js';
-import type { ScraperStrategy } from '../lib/Scraper.js';
 
 import { getConfigProperty } from '../configuration/config.js';
 import { truncateString } from '../utils/components.js';
+import { HtmlStrategy } from './HtmlStrategy.js';
 
-export class InternshipsStrategy implements ScraperStrategy {
+export class InternshipsStrategy extends HtmlStrategy {
   public idsSelector = 'div.card-footer > a.btn';
 
   public postsSelector = 'div.container div.row > div.col > div.card';
@@ -128,7 +128,9 @@ export class InternshipsStrategy implements ScraperStrategy {
     };
   }
 
-  public getRequestInit(cookie: string | undefined): RequestInit | undefined {
+  public override getRequestInit(
+    cookie: string | undefined,
+  ): RequestInit | undefined {
     if (cookie === undefined) {
       return undefined;
     }

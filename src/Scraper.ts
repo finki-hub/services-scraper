@@ -1,6 +1,3 @@
-import type { CheerioAPI } from 'cheerio';
-
-import * as cheerio from 'cheerio';
 import {
   type APIMessageTopLevelComponent,
   codeBlock,
@@ -8,14 +5,12 @@ import {
   MessageFlagsBitField,
   WebhookClient,
 } from 'discord.js';
-import { type Element, isTag } from 'domhandler';
 import { isCookieHeaderValid } from 'finki-auth';
 import { setTimeout } from 'node:timers/promises';
 import { type Logger } from 'pino';
 
 import { getConfigProperty } from './configuration/config.js';
 import { type ScraperConfig, type ScraperStrategy } from './lib/Scraper.js';
-import { getSeenPostIds, markPostsSeen } from './utils/cache.js';
 import { createMentionComponent, truncateString } from './utils/components.js';
 import { ERROR_MESSAGES, LOG_MESSAGES } from './utils/constants.js';
 import { extractErrorCauses } from './utils/errors.js';
@@ -64,16 +59,6 @@ export class Scraper {
     await setTimeout(ms);
   }
 
-  public checkStatusCode(statusCode: number): void {
-    if (statusCode === 401) {
-      throw new Error(`${ERROR_MESSAGES.badResponseCode}: ${statusCode}`);
-    }
-
-    if (statusCode !== 200) {
-      throw new Error(`${ERROR_MESSAGES.badResponseCode}: ${statusCode}`);
-    }
-  }
-
   public async run(): Promise<void> {
     while (true) {
       this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.searching}`);
@@ -89,7 +74,7 @@ export class Scraper {
       }
 
       try {
-        await this.getAndSendPosts(true);
+        await this.getAndSendPosts();
       } catch (error) {
         await this.handleError(error, 'while fetching and sending posts');
         await Scraper.sleep(getConfigProperty('errorDelay'));
@@ -123,22 +108,7 @@ export class Scraper {
     }
   }
 
-  private async fetchData(): Promise<Response> {
-    try {
-      return await fetch(
-        this.scraperConfig.link,
-        this.strategy.getRequestInit?.(this.cookie),
-      );
-    } catch (error) {
-      throw new Error(ERROR_MESSAGES.fetchFailed, {
-        cause: error,
-      });
-    }
-  }
-
-  private async getAndSendPosts(
-    checkCache: boolean,
-  ): Promise<Array<JSONEncodable<APIMessageTopLevelComponent>>> {
+  private async getAndSendPosts(): Promise<void> {
     if (this.cookie === undefined && this.strategy.getCookie !== undefined) {
       try {
         this.cookie = await this.strategy.getCookie();
@@ -148,73 +118,36 @@ export class Scraper {
       }
     }
 
-    const response = await this.fetchData();
+    const maxPosts =
+      this.scraperConfig.maxPosts ?? getConfigProperty('maxPosts');
 
-    this.checkStatusCode(response.status);
+    const { commit, posts } = await this.strategy.getChanges({
+      cookie: this.cookie,
+      link: this.scraperConfig.link,
+      maxPosts,
+      scraperId: this.scraperName,
+    });
 
-    const text = await this.getTextFromResponse(response);
-
-    const $ = cheerio.load(text);
-
-    const seenIds = getSeenPostIds(this.scraperName);
-    const posts = this.getPostsFromDOM($);
-    const ids = this.getIdsFromPosts($, posts);
-
-    if (checkCache && this.hasNoNewPosts(ids, seenIds)) {
+    if (posts.length === 0) {
       this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.noNewPosts}`);
 
-      return [];
+      return;
     }
 
-    const validPosts = await this.processNewPosts({
-      $,
-      checkCache,
-      posts,
-      seenIds,
-    });
+    for (const post of posts) {
+      this.logger.info(
+        `[${this.scraperName}] ${LOG_MESSAGES.postSent}: ${post.id ?? 'unknown'}`,
+      );
+    }
 
     const sendPosts = getConfigProperty('sendPosts');
 
     if (sendPosts) {
-      await this.sendBatch(validPosts);
+      await this.sendBatch(posts.map((post) => post.component));
       logger.info(`[${this.scraperName}] ${LOG_MESSAGES.sentNewPosts}`);
     }
 
-    markPostsSeen(this.scraperName, ids);
-
-    return validPosts;
-  }
-
-  private getIdsFromPosts(
-    $: CheerioAPI,
-    posts: Element[],
-  ): Array<null | string> {
-    return posts.map((post) => this.strategy.getId($(post)));
-  }
-
-  private getPostsFromDOM($: ReturnType<typeof cheerio.load>): Element[] {
-    const posts = $(this.strategy.postsSelector).toArray().filter(isTag);
-
-    const maxPosts =
-      this.scraperConfig.maxPosts ?? getConfigProperty('maxPosts');
-
-    const lastPosts = posts.slice(0, maxPosts);
-
-    if (lastPosts.length === 0) {
-      throw new Error(ERROR_MESSAGES.postsNotFound);
-    }
-
-    return lastPosts;
-  }
-
-  private async getTextFromResponse(response: Response): Promise<string> {
-    try {
-      return await response.text();
-    } catch (error) {
-      throw new Error(ERROR_MESSAGES.fetchParseFailed, {
-        cause: error,
-      });
-    }
+    commit();
   }
 
   private async handleError(
@@ -277,48 +210,6 @@ export class Scraper {
     } catch (error_) {
       this.logger.error(`Failed to send error to webhook: ${error_}`);
     }
-  }
-
-  private hasNoNewPosts(ids: Array<null | string>, seenIds: Set<string>) {
-    return ids.every((id) => id === null || seenIds.has(id));
-  }
-
-  private async processNewPosts(options: {
-    $: CheerioAPI;
-    checkCache: boolean;
-    posts: Element[];
-    seenIds: Set<string>;
-  }): Promise<Array<JSONEncodable<APIMessageTopLevelComponent>>> {
-    const { $, checkCache, posts, seenIds } = options;
-    const allPosts = posts.toReversed();
-    const validPosts: Array<JSONEncodable<APIMessageTopLevelComponent>> = [];
-
-    for (const post of allPosts) {
-      const { component, id } = this.strategy.getPostData($(post));
-
-      if (id === null) {
-        await this.handleError(
-          ERROR_MESSAGES.postIdNotFound,
-          'while extracting post ID',
-          $.html(post),
-        );
-
-        continue;
-      }
-
-      if (checkCache && seenIds.has(id)) {
-        this.logger.info(
-          `[${this.scraperName}] ${LOG_MESSAGES.postAlreadySent}: ${id}`,
-        );
-
-        continue;
-      }
-
-      validPosts.push(component);
-      this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.postSent}: ${id}`);
-    }
-
-    return validPosts;
   }
 
   private async sendBatch(

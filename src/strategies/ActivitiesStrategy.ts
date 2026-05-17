@@ -11,15 +11,15 @@ import { type Element } from 'domhandler';
 import { CasAuthentication, Service } from 'finki-auth';
 
 import type { PostData } from '../lib/Post.js';
-import type { ScraperStrategy } from '../lib/Scraper.js';
 
 import { getConfigProperty } from '../configuration/config.js';
 import { truncateString } from '../utils/components.js';
 import { ACTIVITY_TYPES } from '../utils/constants.js';
+import { HtmlStrategy } from './HtmlStrategy.js';
 
 const whitespaceRegex = /\s+/u;
 
-export class ActivitiesStrategy implements ScraperStrategy {
+export class ActivitiesStrategy extends HtmlStrategy {
   public idsSelector = 'li.activity';
 
   public postsSelector = 'li.activity';
@@ -93,7 +93,9 @@ export class ActivitiesStrategy implements ScraperStrategy {
     };
   }
 
-  public getRequestInit(cookie: string | undefined): RequestInit | undefined {
+  public override getRequestInit(
+    cookie: string | undefined,
+  ): RequestInit | undefined {
     if (cookie === undefined) {
       return undefined;
     }

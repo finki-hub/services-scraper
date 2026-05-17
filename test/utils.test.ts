@@ -189,8 +189,9 @@ describe('createStrategy', () => {
       }));
 
       const { createStrategy } = await import('../src/utils/strategies.js');
+      const strategy = createStrategy(strategyName);
 
-      expect(createStrategy(strategyName).postsSelector).toBe(postsSelector);
+      expect(strategy).toHaveProperty('postsSelector', postsSelector);
     },
   );
 

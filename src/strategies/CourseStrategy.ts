@@ -13,10 +13,10 @@ import { CasAuthentication, Service } from 'finki-auth';
 import type { PostData } from '../lib/Post.js';
 
 import { getConfigProperty } from '../configuration/config.js';
-import { type ScraperStrategy } from '../lib/Scraper.js';
 import { truncateString } from '../utils/components.js';
+import { HtmlStrategy } from './HtmlStrategy.js';
 
-export class CourseStrategy implements ScraperStrategy {
+export class CourseStrategy extends HtmlStrategy {
   public idsSelector = '[title="Permanent link to this post"]';
 
   public postsSelector = 'article';
@@ -97,7 +97,9 @@ export class CourseStrategy implements ScraperStrategy {
     };
   }
 
-  public getRequestInit(cookie: string | undefined): RequestInit | undefined {
+  public override getRequestInit(
+    cookie: string | undefined,
+  ): RequestInit | undefined {
     if (cookie === undefined) {
       return undefined;
     }

@@ -4,6 +4,9 @@ import type { Element } from 'domhandler';
 import * as cheerio from 'cheerio';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { PartnersStrategy } from '../src/strategies/PartnersStrategy.js';
+import { TimetablesStrategy } from '../src/strategies/TimetablesStrategy.js';
+
 const configModulePath = '../src/configuration/config.js';
 
 const collectStrings = (value: unknown): string[] => {
@@ -36,9 +39,7 @@ afterEach(() => {
 });
 
 describe('PartnersStrategy', () => {
-  it('cleans partner labels and whitespace from text-only partner IDs', async () => {
-    const { PartnersStrategy } =
-      await import('../src/strategies/PartnersStrategy.js');
+  it('cleans partner labels and whitespace from text-only partner IDs', () => {
     const strategy = new PartnersStrategy();
 
     const $element = loadElement(
@@ -49,9 +50,7 @@ describe('PartnersStrategy', () => {
     expect(strategy.getId($element)).toBe('Example Company');
   });
 
-  it('normalizes A1 partner links to a stable ID and display name', async () => {
-    const { PartnersStrategy } =
-      await import('../src/strategies/PartnersStrategy.js');
+  it('normalizes A1 partner links to a stable ID and display name', () => {
     const strategy = new PartnersStrategy();
 
     const $element = loadElement(
@@ -171,9 +170,7 @@ describe('CourseStrategy', () => {
 });
 
 describe('TimetablesStrategy', () => {
-  it('collapses ID whitespace and normalizes relative links', async () => {
-    const { TimetablesStrategy } =
-      await import('../src/strategies/TimetablesStrategy.js');
+  it('collapses ID whitespace and normalizes relative links', () => {
     const strategy = new TimetablesStrategy();
     const $element = loadElement(
       '<div><a href="documents/schedule.pdf"> Summer \n timetable </a></div>',
