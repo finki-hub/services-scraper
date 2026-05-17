@@ -6,7 +6,9 @@ export const registerGlobalErrorHandlers = () => {
   const handleShutdown = (signal: string) => {
     logger.info(`Received ${signal}, shutting down gracefully`);
     closeCache();
-    process.exitCode = 0;
+
+    // eslint-disable-next-line n/no-process-exit, unicorn/no-process-exit -- Must exit to stop infinite scraper loops and pending timers
+    process.exit(0);
   };
 
   process.on('SIGTERM', () => {
