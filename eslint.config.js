@@ -4,6 +4,7 @@ import {
   perfectionist,
   prettier,
   typescript,
+  vitest,
 } from 'eslint-config-imperium';
 
 const config = [
@@ -11,6 +12,7 @@ const config = [
   ...base,
   node,
   typescript,
+  vitest,
   prettier,
   perfectionist,
   {
