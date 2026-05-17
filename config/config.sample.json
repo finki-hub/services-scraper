@@ -86,6 +86,12 @@
       "name": "Партнери",
       "maxPosts": 100,
       "enabled": true
+    },
+    "edupage": {
+      "strategy": "edupage",
+      "link": "https://finki.edupage.org",
+      "name": "Распоред EduPage",
+      "enabled": false
     }
   }
 }
