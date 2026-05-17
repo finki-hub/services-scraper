@@ -49,7 +49,9 @@ export class MastersStrategy implements ScraperStrategy {
   }
 
   public getPostData($element: Cheerio<Element>): PostData {
-    const title = truncateString($element.find('h5').text().trim() || '?');
+    const title = truncateString(
+      $element.find('h5').text().replaceAll(/\s+/gu, ' ').trim() || '?',
+    );
 
     const $rows = $element.find('table tbody tr');
 

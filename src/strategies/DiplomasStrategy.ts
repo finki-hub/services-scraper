@@ -51,7 +51,11 @@ export class DiplomasStrategy implements ScraperStrategy {
 
   public getPostData($element: Cheerio<Element>): PostData {
     const title = truncateString(
-      $element.find('div.panel-heading').text().trim() || '?',
+      $element
+        .find('div.panel-heading')
+        .text()
+        .replaceAll(/\s+/gu, ' ')
+        .trim() || '?',
     );
 
     const $rows = $element.find('div.panel-body table tr');

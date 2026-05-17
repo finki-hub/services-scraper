@@ -29,7 +29,9 @@ export class TimetablesStrategy implements ScraperStrategy {
     const link =
       url === undefined ? null : normalizeURL(url, 'https://finki.ukim.mk');
 
-    const title = truncateString($element.find('a').text().trim() || '?');
+    const title = truncateString(
+      $element.find('a').text().replaceAll(/\s+/gu, ' ').trim() || '?',
+    );
 
     const component = new ContainerBuilder().addTextDisplayComponents(
       (textDisplayComponent) =>
