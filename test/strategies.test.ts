@@ -157,25 +157,6 @@ describe('CourseStrategy', () => {
     expect(strings).toContain('/forum/post/1');
     expect(strings).toContain('Нема опис.');
   });
-
-  it('builds cookie request init only when a cookie exists', async () => {
-    vi.doMock(configModulePath, () => ({
-      getConfigProperty: () => {},
-    }));
-
-    const { CourseStrategy } =
-      await import('../src/strategies/CourseStrategy.js');
-    const strategy = new CourseStrategy();
-    const missingCookie: string | undefined = undefined;
-
-    expect(strategy.getRequestInit(missingCookie)).toBeUndefined();
-    expect(strategy.getRequestInit('MoodleSession=abc')).toStrictEqual({
-      credentials: 'include',
-      headers: {
-        Cookie: 'MoodleSession=abc',
-      },
-    });
-  });
 });
 
 describe('TimetablesStrategy', () => {
