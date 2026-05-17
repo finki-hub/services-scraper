@@ -4,9 +4,6 @@ import type { Element } from 'domhandler';
 import * as cheerio from 'cheerio';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { PartnersStrategy } from '../src/strategies/PartnersStrategy.js';
-import { TimetablesStrategy } from '../src/strategies/TimetablesStrategy.js';
-
 const configModulePath = '../src/configuration/config.js';
 
 const collectStrings = (value: unknown): string[] => {
@@ -39,7 +36,13 @@ afterEach(() => {
 });
 
 describe('PartnersStrategy', () => {
-  it('cleans partner labels and whitespace from text-only partner IDs', () => {
+  it('cleans partner labels and whitespace from text-only partner IDs', async () => {
+    vi.doMock(configModulePath, () => ({
+      getConfigProperty: () => {},
+    }));
+
+    const { PartnersStrategy } =
+      await import('../src/strategies/PartnersStrategy.js');
     const strategy = new PartnersStrategy();
 
     const $element = loadElement(
@@ -50,7 +53,13 @@ describe('PartnersStrategy', () => {
     expect(strategy.getId($element)).toBe('Example Company');
   });
 
-  it('normalizes A1 partner links to a stable ID and display name', () => {
+  it('normalizes A1 partner links to a stable ID and display name', async () => {
+    vi.doMock(configModulePath, () => ({
+      getConfigProperty: () => {},
+    }));
+
+    const { PartnersStrategy } =
+      await import('../src/strategies/PartnersStrategy.js');
     const strategy = new PartnersStrategy();
 
     const $element = loadElement(
@@ -170,7 +179,13 @@ describe('CourseStrategy', () => {
 });
 
 describe('TimetablesStrategy', () => {
-  it('collapses ID whitespace and normalizes relative links', () => {
+  it('collapses ID whitespace and normalizes relative links', async () => {
+    vi.doMock(configModulePath, () => ({
+      getConfigProperty: () => {},
+    }));
+
+    const { TimetablesStrategy } =
+      await import('../src/strategies/TimetablesStrategy.js');
     const strategy = new TimetablesStrategy();
     const $element = loadElement(
       '<div><a href="documents/schedule.pdf"> Summer \n timetable </a></div>',
@@ -272,6 +287,10 @@ describe('JobsStrategy, EventsStrategy, and ProjectsStrategy', () => {
   ])(
     'parses $name cards with image thumbnails',
     async ({ exportName, modulePath, selector }) => {
+      vi.doMock(configModulePath, () => ({
+        getConfigProperty: () => {},
+      }));
+
       const strategyModule = (await import(modulePath)) as Record<
         string,
         new () => {

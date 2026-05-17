@@ -9,7 +9,7 @@ import {
 import { truncateHeading, truncateString } from '../src/utils/components.js';
 import { ERROR_MESSAGES } from '../src/utils/constants.js';
 import { getCookieHeader } from '../src/utils/cookies.js';
-import { extractErrorCauses } from '../src/utils/errors.js';
+import { extractErrorCauses } from '../src/utils/error-causes.js';
 import { normalizeURL } from '../src/utils/links.js';
 
 const invalidInputRegex = /Invalid/u;

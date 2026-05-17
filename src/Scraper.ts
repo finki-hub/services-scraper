@@ -13,7 +13,7 @@ import { getConfigProperty } from './configuration/config.js';
 import { type ScraperConfig, type ScraperStrategy } from './lib/Scraper.js';
 import { createMentionComponent, truncateString } from './utils/components.js';
 import { ERROR_MESSAGES, LOG_MESSAGES } from './utils/constants.js';
-import { extractErrorCauses } from './utils/errors.js';
+import { extractErrorCauses } from './utils/error-causes.js';
 import { logger } from './utils/logger.js';
 import { createStrategy } from './utils/strategies.js';
 import { errorWebhook } from './utils/webhooks.js';
