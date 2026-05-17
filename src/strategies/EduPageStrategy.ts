@@ -236,15 +236,10 @@ const stableStringify = (card: ResolvedCard): string =>
     weeks: card.weeks,
   });
 
-const formatTimetableRange = (timetable: ListingTimetable): string => {
+const formatTimetableDate = (timetable: ListingTimetable): string => {
   const dateFrom = getStringValue(timetable, ['datefrom']);
-  const dateTo = getStringValue(timetable, ['dateto']);
 
-  if (dateFrom === '' && dateTo === '') {
-    return 'Нема наведен период.';
-  }
-
-  return `${dateFrom || '?'} - ${dateTo || '?'}`;
+  return dateFrom === '' ? 'Нема наведен датум.' : dateFrom;
 };
 
 const parseListingSnapshot = (
@@ -395,7 +390,7 @@ export class EduPageStrategy implements ScraperStrategy {
       )
       .addTextDisplayComponents((textDisplayComponent) =>
         textDisplayComponent.setContent(
-          `${bold('Период:')} ${formatTimetableRange(timetable)}`,
+          `${bold('Од:')} ${formatTimetableDate(timetable)}`,
         ),
       );
 
