@@ -10,10 +10,13 @@ const DB_FILE_NAME = 'scraper-cache.db';
 const DB_PATH = join(CACHE_PATH, DB_FILE_NAME);
 
 const PostIdRowsSchema = z.array(z.tuple([z.string()]));
+const SnapshotRowSchema = z.tuple([z.string()]).optional();
 
 let db: DatabaseSync | undefined;
 let selectStatement: StatementSync | undefined;
 let insertStatement: StatementSync | undefined;
+let snapshotSelectStatement: StatementSync | undefined;
+let snapshotUpsertStatement: StatementSync | undefined;
 
 const initializeDatabase = (): DatabaseSync => {
   if (db !== undefined) {
@@ -46,6 +49,14 @@ const initializeDatabase = (): DatabaseSync => {
       first_seen_at INTEGER NOT NULL DEFAULT (unixepoch()),
       last_seen_at  INTEGER NOT NULL DEFAULT (unixepoch()),
       PRIMARY KEY (scraper_id, post_id)
+    ) WITHOUT ROWID;
+
+    CREATE TABLE IF NOT EXISTS snapshots (
+      scraper_id  TEXT NOT NULL,
+      key         TEXT NOT NULL,
+      value       TEXT NOT NULL,
+      updated_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (scraper_id, key)
     ) WITHOUT ROWID;
   `);
 
@@ -116,9 +127,61 @@ export const markPostsSeen = (
   }
 };
 
+const getSnapshotSelectStatement = (): StatementSync => {
+  if (snapshotSelectStatement !== undefined) {
+    return snapshotSelectStatement;
+  }
+
+  const database = initializeDatabase();
+  snapshotSelectStatement = database.prepare(
+    'SELECT value FROM snapshots WHERE scraper_id = ? AND key = ?',
+  );
+  snapshotSelectStatement.setReturnArrays(true);
+
+  return snapshotSelectStatement;
+};
+
+const getSnapshotUpsertStatement = (): StatementSync => {
+  if (snapshotUpsertStatement !== undefined) {
+    return snapshotUpsertStatement;
+  }
+
+  const database = initializeDatabase();
+  snapshotUpsertStatement = database.prepare(`
+    INSERT INTO snapshots (scraper_id, key, value, updated_at)
+    VALUES (?, ?, ?, unixepoch())
+    ON CONFLICT(scraper_id, key) DO UPDATE SET
+      value = excluded.value,
+      updated_at = unixepoch()
+  `);
+
+  return snapshotUpsertStatement;
+};
+
+export const getSnapshot = (
+  scraperId: string,
+  key: string,
+): string | undefined => {
+  const select = getSnapshotSelectStatement();
+  const row = SnapshotRowSchema.parse(select.get(scraperId, key));
+
+  return row?.[0];
+};
+
+export const setSnapshot = (
+  scraperId: string,
+  key: string,
+  value: string,
+): void => {
+  const upsert = getSnapshotUpsertStatement();
+  upsert.run(scraperId, key, value);
+};
+
 export const closeCache = (): void => {
   selectStatement = undefined;
   insertStatement = undefined;
+  snapshotSelectStatement = undefined;
+  snapshotUpsertStatement = undefined;
   db?.close();
   db = undefined;
 };

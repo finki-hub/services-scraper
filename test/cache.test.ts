@@ -103,3 +103,57 @@ describe('SQLite seen-post cache', () => {
     );
   });
 });
+
+describe('JSON snapshot cache', () => {
+  it('returns undefined for a missing snapshot', async () => {
+    const cache = await loadCache();
+
+    expect(cache.getSnapshot('edupage', 'listing')).toBeUndefined();
+  });
+
+  it('stores and retrieves a snapshot', async () => {
+    const cache = await loadCache();
+    const data = JSON.stringify({ defaultNum: '28', ttNums: ['25', '28'] });
+
+    cache.setSnapshot('edupage', 'listing', data);
+
+    expect(cache.getSnapshot('edupage', 'listing')).toBe(data);
+  });
+
+  it('overwrites an existing snapshot', async () => {
+    const cache = await loadCache();
+
+    cache.setSnapshot('edupage', 'listing', '{"v":1}');
+    cache.setSnapshot('edupage', 'listing', '{"v":2}');
+
+    expect(cache.getSnapshot('edupage', 'listing')).toBe('{"v":2}');
+  });
+
+  it('keeps scraper and key namespaces separate', async () => {
+    const cache = await loadCache();
+
+    cache.setSnapshot('edupage', 'listing', 'edupage-listing');
+    cache.setSnapshot('edupage', 'cards:28', 'edupage-cards');
+    cache.setSnapshot('other', 'listing', 'other-listing');
+
+    expect(cache.getSnapshot('edupage', 'listing')).toBe('edupage-listing');
+    expect(cache.getSnapshot('edupage', 'cards:28')).toBe('edupage-cards');
+    expect(cache.getSnapshot('other', 'listing')).toBe('other-listing');
+    expect(cache.getSnapshot('edupage', 'missing')).toBeUndefined();
+  });
+
+  it('persists snapshots after closing and reopening', async () => {
+    const cache = await loadCache();
+
+    cache.setSnapshot('edupage', 'listing', '{"persisted":true}');
+    cache.closeCache();
+    cacheModule = undefined;
+    vi.resetModules();
+
+    const reopenedCache = await importCache();
+
+    expect(reopenedCache.getSnapshot('edupage', 'listing')).toBe(
+      '{"persisted":true}',
+    );
+  });
+});
