@@ -7,11 +7,10 @@ import {
   heading,
   SeparatorSpacingSize,
 } from 'discord.js';
-import { CasAuthentication, Service } from 'finki-auth';
+import { Service } from 'finki-auth';
 
 import type { PostData } from '../lib/Post.js';
 
-import { getConfigProperty } from '../configuration/config.js';
 import { truncateString } from '../utils/components.js';
 import { HtmlStrategy } from './HtmlStrategy.js';
 
@@ -23,19 +22,7 @@ export class MastersStrategy extends HtmlStrategy {
   public scraperService = Service.MASTERS;
 
   public async getCookie(): Promise<string> {
-    const credentials = getConfigProperty('credentials');
-
-    if (credentials === undefined) {
-      throw new Error(
-        'Credentials are not defined. Please check your configuration.',
-      );
-    }
-
-    const auth = new CasAuthentication(credentials);
-
-    await auth.authenticate(Service.MASTERS);
-
-    return auth.buildCookieHeader(Service.MASTERS);
+    return this.getCasAuthCookie(Service.MASTERS);
   }
 
   public getId($element: Cheerio<Element>): null | string {

@@ -2,6 +2,7 @@ import type { Cheerio, CheerioAPI } from 'cheerio';
 
 import * as cheerio from 'cheerio';
 import { type Element, isTag } from 'domhandler';
+import { CasAuthentication, type Service } from 'finki-auth';
 
 import type { PostData } from '../lib/Post.js';
 import type {
@@ -10,6 +11,7 @@ import type {
   StrategyResult,
 } from '../lib/Scraper.js';
 
+import { getConfigProperty } from '../configuration/config.js';
 import { getSeenPostIds, markPostsSeen } from '../utils/cache.js';
 import { ERROR_MESSAGES } from '../utils/constants.js';
 import { logger } from '../utils/logger.js';
@@ -21,6 +23,22 @@ const NO_CHANGES: StrategyResult = {
 
 export abstract class HtmlStrategy implements ScraperStrategy {
   public abstract postsSelector: string;
+
+  public async getCasAuthCookie(service: Service): Promise<string> {
+    const credentials = getConfigProperty('credentials');
+
+    if (credentials === undefined) {
+      throw new Error(
+        'Credentials are not defined. Please check your configuration.',
+      );
+    }
+
+    const auth = new CasAuthentication(credentials);
+
+    await auth.authenticate(service);
+
+    return auth.buildCookieHeader(service);
+  }
 
   public async getChanges(context: StrategyContext): Promise<StrategyResult> {
     const response = await this.fetchHtml(context);
@@ -66,10 +84,21 @@ export abstract class HtmlStrategy implements ScraperStrategy {
 
   public abstract getPostData($element: Cheerio<Element>): PostData;
 
-  public getRequestInit?(cookie: string | undefined): RequestInit | undefined;
+  public getRequestInit(cookie: string | undefined): RequestInit | undefined {
+    if (cookie === undefined) {
+      return undefined;
+    }
+
+    return {
+      credentials: 'include',
+      headers: {
+        Cookie: cookie,
+      },
+    };
+  }
 
   private async fetchHtml(context: StrategyContext): Promise<string> {
-    const requestInit = this.getRequestInit?.(context.cookie);
+    const requestInit = this.getRequestInit(context.cookie);
 
     let response: Response;
 
