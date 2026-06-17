@@ -120,7 +120,9 @@ export abstract class HtmlStrategy implements ScraperStrategy {
   }
 
   private getPostsFromDom($: CheerioAPI, maxPosts: number): Element[] {
-    const posts = $(this.postsSelector).toArray().filter(isTag);
+    const posts = $(this.postsSelector)
+      .filter((_, element) => isTag(element))
+      .toArray();
     const lastPosts = posts.slice(0, maxPosts);
 
     if (lastPosts.length === 0) {
