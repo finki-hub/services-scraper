@@ -36,7 +36,7 @@ export abstract class FinkiNewsStrategy extends HtmlStrategy {
         .text()
         .trim() || '';
 
-    const image = $element.find('img').attr('src')?.split('?').at(0) ?? null;
+    const image = $element.find('img').attr('src')?.split('?', 1).at(0) ?? null;
 
     const textDisplayComponents = [
       new TextDisplayBuilder().setContent(
