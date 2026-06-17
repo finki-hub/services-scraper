@@ -21,9 +21,6 @@
     "typescript": "~6.0.3",
     "vitest": "^4.1.9"
   },
-  "engines": {
-    "node": ">=24.10.0"
-  },
   "homepage": "https://github.com/finki-hub/services-scraper",
   "license": "MIT",
   "main": "dist/index.js",

@@ -1,4 +1,4 @@
-FROM --platform=${BUILDPLATFORM} node:24-slim AS build
+FROM --platform=${BUILDPLATFORM} node:26-slim AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -7,7 +7,7 @@ RUN npm ci
 COPY . ./
 RUN npm run build && npm prune --production
 
-FROM node:24-slim AS final
+FROM node:26-slim AS final
 WORKDIR /app
 
 COPY --from=build /app/node_modules ./node_modules

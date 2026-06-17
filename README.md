@@ -1,6 +1,6 @@
 # FINKI Hub / Services Scraper
 
-Tooling for scraping and providing publicly available data from FCSE services. The data is provided using a REST API or webhooks. Requires Node.js 24+.
+Tooling for scraping and providing publicly available data from FCSE services. The data is provided using a REST API or webhooks. Requires Node.js 26+.
 
 ## Architecture
 
