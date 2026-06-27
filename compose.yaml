@@ -5,6 +5,9 @@ services:
     build: .
     image: services-scraper-dev:latest
     restart: unless-stopped
+    environment:
+      POSTHOG_KEY: ${POSTHOG_KEY:-phc_xXEqLMnYeDPuXA6HHwuasQMdSufDGryS8vZZuHmu9Qwd}
+      POSTHOG_HOST: ${POSTHOG_HOST:-https://eu.i.posthog.com}
     volumes:
       - ./cache:/app/cache
       - ./config:/app/config

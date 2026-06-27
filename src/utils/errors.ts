@@ -1,21 +1,23 @@
+import { shutdownAnalytics } from './analytics.js';
 import { closeCache } from './cache.js';
 import { logger } from './logger.js';
 import { errorWebhook } from './webhooks.js';
 
 export const registerGlobalErrorHandlers = () => {
-  const handleShutdown = (signal: string) => {
+  const handleShutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down gracefully`);
     closeCache();
+    await shutdownAnalytics();
 
     // eslint-disable-next-line n/no-process-exit, unicorn/no-process-exit -- Must exit to stop infinite scraper loops and pending timers
     process.exit(0);
   };
 
   process.on('SIGTERM', () => {
-    handleShutdown('SIGTERM');
+    void handleShutdown('SIGTERM');
   });
   process.on('SIGINT', () => {
-    handleShutdown('SIGINT');
+    void handleShutdown('SIGINT');
   });
 
   process.on('unhandledRejection', async (reason) => {
@@ -48,6 +50,7 @@ export const registerGlobalErrorHandlers = () => {
     }
 
     closeCache();
+    await shutdownAnalytics();
 
     // eslint-disable-next-line n/no-process-exit -- Must exit on uncaught exception to prevent undefined state
     process.exit(1);

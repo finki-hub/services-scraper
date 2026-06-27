@@ -49,7 +49,7 @@ export abstract class HtmlStrategy implements ScraperStrategy {
     const allIds = posts.map((post) => this.getId($(post)));
 
     if (allIds.every((id) => id === null || seenIds.has(id))) {
-      return NO_CHANGES;
+      return { ...NO_CHANGES, itemsFound: posts.length };
     }
 
     const newPosts: PostData[] = [];
@@ -76,6 +76,7 @@ export abstract class HtmlStrategy implements ScraperStrategy {
       commit: () => {
         markPostsSeen(context.scraperId, allIds);
       },
+      itemsFound: posts.length,
       posts: newPosts,
     };
   }

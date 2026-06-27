@@ -1,0 +1,58 @@
+import { PostHog } from 'posthog-node';
+
+import { logger } from './logger.js';
+
+const SERVICE_NAME = 'services-scraper';
+
+const POSTHOG_KEY = process.env['POSTHOG_KEY'] ?? '';
+const POSTHOG_HOST = process.env['POSTHOG_HOST'] ?? 'https://eu.i.posthog.com';
+
+const client =
+  POSTHOG_KEY === ''
+    ? undefined
+    : new PostHog(POSTHOG_KEY, {
+        disableGeoip: true,
+        enableExceptionAutocapture: false,
+        flushAt: 1,
+        flushInterval: 0,
+        host: POSTHOG_HOST,
+      });
+
+export type ScrapeRunEvent = {
+  itemsFound: number;
+  itemsNew: number;
+  ms: number;
+  source: string;
+  status: ScrapeRunStatus;
+};
+
+export type ScrapeRunStatus = 'error' | 'success';
+
+export const captureScrapeRun = (event: ScrapeRunEvent): void => {
+  client?.capture({
+    distinctId: SERVICE_NAME,
+    event: 'scrape_run',
+    properties: {
+      /* eslint-disable camelcase -- PostHog event properties use snake_case */
+      items_found: event.itemsFound,
+      items_new: event.itemsNew,
+      /* eslint-enable camelcase -- PostHog event properties use snake_case */
+      ms: event.ms,
+      service: SERVICE_NAME,
+      source: event.source,
+      status: event.status,
+    },
+  });
+};
+
+export const shutdownAnalytics = async (): Promise<void> => {
+  if (client === undefined) {
+    return;
+  }
+
+  try {
+    await client.shutdown();
+  } catch (error) {
+    logger.error({ error }, 'Failed to flush PostHog analytics');
+  }
+};

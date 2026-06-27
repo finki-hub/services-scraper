@@ -43,6 +43,17 @@ You can select which scrapers to run declaratively (in the configuration with th
 
 There is an example configuration file available at [`config/config.sample.json`](./config/config.sample.json). Copy it to `config/config.json` and edit it to your liking.
 
+### Analytics
+
+PostHog product analytics are wired through environment variables. They are no-ops when `POSTHOG_KEY` is empty (dev/CI/tests emit nothing). A `scrape_run` summary event (source, items found/new, duration, status) is sent per scrape iteration; no per-post events and no scraped content are sent.
+
+| Variable       | Default                      | Description                            |
+| -------------- | ---------------------------- | -------------------------------------- |
+| `POSTHOG_KEY`  | _empty_                      | PostHog project ingest key (public).   |
+| `POSTHOG_HOST` | `https://eu.i.posthog.com`   | PostHog Cloud EU ingest host.          |
+
+The Compose files ship the public key as a default, so `docker compose up` reports out of the box.
+
 ## License
 
 This project is licensed under the terms of the MIT license.
