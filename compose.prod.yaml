@@ -5,7 +5,7 @@ services:
     image: ghcr.io/finki-hub/services-scraper:latest
     restart: unless-stopped
     environment:
-      POSTHOG_KEY: ${POSTHOG_KEY:-phc_xXEqLMnYeDPuXA6HHwuasQMdSufDGryS8vZZuHmu9Qwd}
+      POSTHOG_KEY: ${POSTHOG_KEY:-}
       POSTHOG_HOST: ${POSTHOG_HOST:-https://eu.i.posthog.com}
     volumes:
       - ./cache:/app/cache

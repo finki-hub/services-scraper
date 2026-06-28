@@ -52,7 +52,7 @@ PostHog product analytics are wired through environment variables. They are no-o
 | `POSTHOG_KEY`  | _empty_                      | PostHog project ingest key (public).   |
 | `POSTHOG_HOST` | `https://eu.i.posthog.com`   | PostHog Cloud EU ingest host.          |
 
-The Compose files ship the public key as a default, so `docker compose up` reports out of the box.
+Analytics require an explicit `POSTHOG_KEY` in the environment; without it the scraper runs silently with no telemetry.
 
 ## License
 
