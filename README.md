@@ -45,7 +45,11 @@ There is an example configuration file available at [`config/config.sample.json`
 
 ### Analytics
 
-PostHog product analytics are wired through environment variables. They are no-ops when `POSTHOG_KEY` is empty (dev/CI/tests emit nothing). A `scrape_run` summary event (source, items found/new, duration, status) is sent per scrape iteration; no per-post events and no scraped content are sent.
+PostHog product analytics are wired through environment variables. They are no-ops when `POSTHOG_KEY` is empty (dev/CI/tests emit nothing). Three event types are emitted — all metadata only, no scraped content:
+
+- `scrape_run` — one per iteration: source name, items found/new, duration, success/error status.
+- `source_scraped` — one per source per iteration: source name, records added/total, duration, success/error.
+- Exception capture — uncaught exceptions: message and stack trace only (Node.js does not serialize frame-local variables).
 
 | Variable       | Default                      | Description                            |
 | -------------- | ---------------------------- | -------------------------------------- |
