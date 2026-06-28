@@ -45,6 +45,20 @@ export const captureScrapeRun = (event: ScrapeRunEvent): void => {
   });
 };
 
+export const captureException = (
+  error: unknown,
+  properties?: Record<string, unknown>,
+): void => {
+  try {
+    client?.captureException(error, SERVICE_NAME, {
+      service: SERVICE_NAME,
+      ...properties,
+    });
+  } catch {
+    // no-op: analytics must never throw
+  }
+};
+
 export const shutdownAnalytics = async (): Promise<void> => {
   if (client === undefined) {
     return;

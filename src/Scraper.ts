@@ -11,7 +11,7 @@ import { type Logger } from 'pino';
 
 import { getConfigProperty } from './configuration/config.js';
 import { type ScraperConfig, type ScraperStrategy } from './lib/Scraper.js';
-import { captureScrapeRun } from './utils/analytics.js';
+import { captureException, captureScrapeRun } from './utils/analytics.js';
 import { createMentionComponent, truncateString } from './utils/components.js';
 import { ERROR_MESSAGES, LOG_MESSAGES } from './utils/constants.js';
 import { extractErrorCauses } from './utils/error-causes.js';
@@ -182,6 +182,11 @@ export class Scraper {
     context?: string,
     code?: string,
   ): Promise<void> {
+    captureException(error, {
+      context,
+      scraper: this.scraperName,
+    });
+
     let errorMessage: string;
     let stackTrace: string | undefined;
 
