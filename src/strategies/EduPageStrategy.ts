@@ -17,6 +17,7 @@ import { getSnapshot, setSnapshot } from '../utils/cache.js';
 import { truncateString } from '../utils/components.js';
 
 const SPLIT_REGEX = /[,;]/u;
+const CARD_ID_COLLATOR = new Intl.Collator();
 const DAY_NAMES = [
   'Понеделник',
   'Вторник',
@@ -111,9 +112,9 @@ const FIELD_LABELS: Record<CardField, string> = {
 };
 
 const getCurrentSchoolYear = (): number => {
-  const now = new Date();
+  const now = Temporal.Now.plainDateISO();
 
-  return now.getMonth() < 7 ? now.getFullYear() - 1 : now.getFullYear();
+  return now.month <= 7 ? now.year - 1 : now.year;
 };
 
 const getStringValue = (row: RawRow | undefined, keys: string[]): string => {
@@ -566,6 +567,6 @@ export class EduPageStrategy implements ScraperStrategy {
         };
       })
       .filter(({ cardId }) => cardId !== '')
-      .sort((a, b) => a.cardId.localeCompare(b.cardId));
+      .sort((a, b) => CARD_ID_COLLATOR.compare(a.cardId, b.cardId));
   }
 }

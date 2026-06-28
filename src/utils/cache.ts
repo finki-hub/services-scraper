@@ -12,12 +12,14 @@ const DB_PATH = join(CACHE_PATH, DB_FILE_NAME);
 const PostIdRowsSchema = z.array(z.tuple([z.string()]));
 const SnapshotRowSchema = z.tuple([z.string()]).optional();
 
-let db: DatabaseSync | undefined;
+const dbState: { connection: DatabaseSync | undefined } = {
+  connection: undefined,
+};
 const statements = new Map<string, StatementSync>();
 
 const initializeDatabase = (): DatabaseSync => {
-  if (db !== undefined) {
-    return db;
+  if (dbState.connection !== undefined) {
+    return dbState.connection;
   }
 
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- CACHE_PATH is a controlled constant
@@ -26,8 +28,10 @@ const initializeDatabase = (): DatabaseSync => {
     mkdirSync(CACHE_PATH, { recursive: true });
   }
 
+  let connection: DatabaseSync;
+
   try {
-    db = new DatabaseSync(DB_PATH);
+    connection = new DatabaseSync(DB_PATH);
   } catch (error) {
     logger.error(
       { error },
@@ -36,7 +40,9 @@ const initializeDatabase = (): DatabaseSync => {
     throw new Error('Failed to open SQLite cache database', { cause: error });
   }
 
-  db.exec(`
+  dbState.connection = connection;
+
+  connection.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA synchronous = NORMAL;
 
@@ -57,7 +63,7 @@ const initializeDatabase = (): DatabaseSync => {
     ) WITHOUT ROWID;
   `);
 
-  return db;
+  return connection;
 };
 
 const prepareStatement = (
@@ -163,6 +169,6 @@ export const setSnapshot = (
 
 export const closeCache = (): void => {
   statements.clear();
-  db?.close();
-  db = undefined;
+  dbState.connection?.close();
+  dbState.connection = undefined;
 };

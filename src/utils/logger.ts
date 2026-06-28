@@ -1,9 +1,5 @@
-import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import pinoLogger from 'pino';
-
-const logsDir = join('.', 'logs');
-await mkdir(logsDir, { recursive: true });
 
 const transport = pinoLogger.transport({
   targets: [
@@ -19,6 +15,7 @@ const transport = pinoLogger.transport({
       level: 'info',
       options: {
         destination: join('.', 'logs', 'bot.log'),
+        mkdir: true,
       },
       target: 'pino/file',
     },

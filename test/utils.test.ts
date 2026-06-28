@@ -93,6 +93,7 @@ describe('extractErrorCauses', () => {
 
   it('stops on self-referential causes', () => {
     const error = new Error('loop');
+    // eslint-disable-next-line unicorn/no-error-property-assignment -- a self-referential cause cannot be set at construction time
     error.cause = error;
 
     expect(extractErrorCauses(error)).toStrictEqual([]);

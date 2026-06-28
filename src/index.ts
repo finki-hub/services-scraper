@@ -25,14 +25,18 @@ const runScraperWithRecovery = async (scraper: Scraper): Promise<void> => {
   }
 };
 
+const startScrapers = async (): Promise<void> => {
+  const scrapers = getNamedScrapers();
+
+  for (const scraper of Object.values(scrapers)) {
+    void runScraperWithRecovery(scraper);
+
+    await setTimeout(1_000);
+  }
+};
+
 registerGlobalErrorHandlers();
 
 logger.info(LOG_MESSAGES.initializing);
 
-const scrapers = getNamedScrapers();
-
-for (const scraper of Object.values(scrapers)) {
-  void runScraperWithRecovery(scraper);
-
-  await setTimeout(1_000);
-}
+await startScrapers();

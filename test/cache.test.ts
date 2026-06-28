@@ -7,12 +7,14 @@ import type * as CacheExports from '../src/utils/cache.js';
 
 type CacheModule = typeof CacheExports;
 
-let cachePath: string;
-let cacheModule: CacheModule | undefined;
+const state: { cacheModule: CacheModule | undefined; cachePath: string } = {
+  cacheModule: undefined,
+  cachePath: '',
+};
 
 const importCache = async (): Promise<CacheModule> => {
   vi.doMock('../src/utils/constants.js', () => ({
-    CACHE_PATH: cachePath,
+    CACHE_PATH: state.cachePath,
   }));
   vi.doMock('../src/utils/logger.js', () => ({
     logger: {
@@ -21,31 +23,35 @@ const importCache = async (): Promise<CacheModule> => {
     },
   }));
 
-  cacheModule = await import('../src/utils/cache.js');
+  const loaded = await import('../src/utils/cache.js');
 
-  return cacheModule;
+  state.cacheModule = loaded;
+
+  return loaded;
 };
 
 const loadCache = async (): Promise<CacheModule> => {
-  cachePath = await mkdtemp(join(tmpdir(), 'services-scraper-cache-test-'));
+  state.cachePath = await mkdtemp(
+    join(tmpdir(), 'services-scraper-cache-test-'),
+  );
 
   return importCache();
 };
 
 beforeEach(() => {
-  cacheModule = undefined;
-  cachePath = '';
+  state.cacheModule = undefined;
+  state.cachePath = '';
   vi.resetModules();
 });
 
 afterEach(async () => {
-  cacheModule?.closeCache();
+  state.cacheModule?.closeCache();
   vi.doUnmock('../src/utils/constants.js');
   vi.doUnmock('../src/utils/logger.js');
   vi.resetModules();
 
-  if (cachePath !== '') {
-    await rm(cachePath, { force: true, recursive: true });
+  if (state.cachePath !== '') {
+    await rm(state.cachePath, { force: true, recursive: true });
   }
 });
 
@@ -93,7 +99,7 @@ describe('SQLite seen-post cache', () => {
 
     cache.markPostsSeen('announcements', ['post-1']);
     cache.closeCache();
-    cacheModule = undefined;
+    state.cacheModule = undefined;
     vi.resetModules();
 
     const reopenedCache = await importCache();
@@ -147,7 +153,7 @@ describe('JSON snapshot cache', () => {
 
     cache.setSnapshot('edupage', 'listing', '{"persisted":true}');
     cache.closeCache();
-    cacheModule = undefined;
+    state.cacheModule = undefined;
     vi.resetModules();
 
     const reopenedCache = await importCache();
