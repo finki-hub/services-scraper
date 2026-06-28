@@ -10,8 +10,16 @@ import { setTimeout } from 'node:timers/promises';
 import { type Logger } from 'pino';
 
 import { getConfigProperty } from './configuration/config.js';
-import { type ScraperConfig, type ScraperStrategy } from './lib/Scraper.js';
-import { captureException, captureScrapeRun } from './utils/analytics.js';
+import {
+  type ScraperConfig,
+  type ScraperStrategy,
+  type StrategyResult,
+} from './lib/Scraper.js';
+import {
+  captureException,
+  captureScrapeRun,
+  captureSourceScraped,
+} from './utils/analytics.js';
 import { createMentionComponent, truncateString } from './utils/components.js';
 import { ERROR_MESSAGES, LOG_MESSAGES } from './utils/constants.js';
 import { extractErrorCauses } from './utils/error-causes.js';
@@ -141,11 +149,39 @@ export class Scraper {
     const maxPosts =
       this.scraperConfig.maxPosts ?? getConfigProperty('maxPosts');
 
-    const { commit, itemsFound, posts } = await this.strategy.getChanges({
-      cookie: this.cookie,
-      link: this.scraperConfig.link,
-      maxPosts,
-      scraperId: this.scraperName,
+    const scrapeStart = performance.now();
+    let strategyResult: StrategyResult;
+
+    try {
+      strategyResult = await this.strategy.getChanges({
+        cookie: this.cookie,
+        link: this.scraperConfig.link,
+        maxPosts,
+        scraperId: this.scraperName,
+      });
+    } catch (error) {
+      captureSourceScraped({
+        durationMs: Math.round(performance.now() - scrapeStart),
+        recordsAdded: null,
+        recordsChanged: null,
+        recordsRemoved: null,
+        recordsTotal: null,
+        source: this.scraperName,
+        success: false,
+      });
+      throw error;
+    }
+
+    const { commit, itemsFound, posts } = strategyResult;
+
+    captureSourceScraped({
+      durationMs: Math.round(performance.now() - scrapeStart),
+      recordsAdded: posts.length,
+      recordsChanged: null,
+      recordsRemoved: null,
+      recordsTotal: itemsFound ?? posts.length,
+      source: this.scraperName,
+      success: true,
     });
 
     const summary = {
