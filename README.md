@@ -45,11 +45,13 @@ There is an example configuration file available at [`config/config.sample.json`
 
 ### Analytics
 
-PostHog product analytics are wired through environment variables. They are no-ops when `POSTHOG_KEY` is empty (dev/CI/tests emit nothing). Three event types are emitted — all metadata only, no scraped content:
+PostHog product analytics are wired through environment variables. They are no-ops when `POSTHOG_KEY` is empty (dev/CI/tests emit nothing). The following events are emitted — all metadata only, no scraped content:
 
-- `scrape_run` — one per iteration: source name, items found/new, duration, success/error status.
-- `source_scraped` — one per source per iteration: source name, records added/total, duration, success/error.
-- Exception capture — uncaught exceptions: message and stack trace only (Node.js does not serialize frame-local variables).
+- `scrape_started` — emitted before each scraper iteration starts. Properties: `source`.
+- `scrape_run` — emitted after each scraper iteration succeeds or fails. Properties: `source`, `service`, `items_found`, `items_new`, `ms`, `status`.
+- `source_scraped` — emitted after each source scrape succeeds or fails. Properties: `source`, `records_added`, `records_total`, `duration_ms`, `success`.
+- `notification_sent` — emitted after a Discord notification batch succeeds or fails. Properties: `source`, `count`, `success`.
+- Exception capture — emitted for handled scraper errors via PostHog exception capture. Properties include `service`, `context`, and `scraper`; PostHog records the exception message and stack trace only (Node.js does not serialize frame-local variables).
 
 | Variable       | Default                      | Description                            |
 | -------------- | ---------------------------- | -------------------------------------- |
