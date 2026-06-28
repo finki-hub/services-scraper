@@ -166,8 +166,6 @@ export class Scraper {
       captureSourceScraped({
         durationMs: Math.round(performance.now() - scrapeStart),
         recordsAdded: null,
-        recordsChanged: null,
-        recordsRemoved: null,
         recordsTotal: null,
         source: this.scraperName,
         success: false,
@@ -180,8 +178,6 @@ export class Scraper {
     captureSourceScraped({
       durationMs: Math.round(performance.now() - scrapeStart),
       recordsAdded: posts.length,
-      recordsChanged: null,
-      recordsRemoved: null,
       recordsTotal: itemsFound ?? posts.length,
       source: this.scraperName,
       success: true,
