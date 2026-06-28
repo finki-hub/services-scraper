@@ -17,7 +17,9 @@ import {
 } from './lib/Scraper.js';
 import {
   captureException,
+  captureNotificationSent,
   captureScrapeRun,
+  captureScrapeStarted,
   captureSourceScraped,
 } from './utils/analytics.js';
 import { createMentionComponent, truncateString } from './utils/components.js';
@@ -71,6 +73,7 @@ export class Scraper {
   public async run(): Promise<void> {
     while (true) {
       this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.searching}`);
+      captureScrapeStarted({ source: this.scraperName });
 
       try {
         await this.validateCookie();
@@ -204,8 +207,22 @@ export class Scraper {
     const sendPosts = getConfigProperty('sendPosts');
 
     if (sendPosts) {
-      await this.sendBatch(posts.map((post) => post.component));
-      logger.info(`[${this.scraperName}] ${LOG_MESSAGES.sentNewPosts}`);
+      try {
+        await this.sendBatch(posts.map((post) => post.component));
+        captureNotificationSent({
+          count: posts.length,
+          source: this.scraperName,
+          success: true,
+        });
+        logger.info(`[${this.scraperName}] ${LOG_MESSAGES.sentNewPosts}`);
+      } catch (error) {
+        captureNotificationSent({
+          count: posts.length,
+          source: this.scraperName,
+          success: false,
+        });
+        throw error;
+      }
     }
 
     commit();

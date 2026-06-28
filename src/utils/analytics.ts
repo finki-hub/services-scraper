@@ -19,6 +19,12 @@ const client =
         host: POSTHOG_HOST,
       });
 
+export type NotificationSentEvent = {
+  count: number;
+  source: string;
+  success: boolean;
+};
+
 export type ScrapeRunEvent = {
   itemsFound: number;
   itemsNew: number;
@@ -29,6 +35,10 @@ export type ScrapeRunEvent = {
 
 export type ScrapeRunStatus = 'error' | 'success';
 
+export type ScrapeStartedEvent = {
+  source: string;
+};
+
 export type SourceScrapedEvent = {
   durationMs: number;
   recordsAdded: null | number;
@@ -37,6 +47,32 @@ export type SourceScrapedEvent = {
   recordsTotal: null | number;
   source: string;
   success: boolean;
+};
+
+export const captureScrapeStarted = (event: ScrapeStartedEvent): void => {
+  try {
+    client?.capture({
+      distinctId: SERVICE_NAME,
+      event: 'scrape_started',
+      properties: {
+        source: event.source,
+      },
+    });
+  } catch {}
+};
+
+export const captureNotificationSent = (event: NotificationSentEvent): void => {
+  try {
+    client?.capture({
+      distinctId: SERVICE_NAME,
+      event: 'notification_sent',
+      properties: {
+        count: event.count,
+        source: event.source,
+        success: event.success,
+      },
+    });
+  } catch {}
 };
 
 export const captureSourceScraped = (event: SourceScrapedEvent): void => {
