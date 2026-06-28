@@ -56,9 +56,7 @@ export const captureSourceScraped = (event: SourceScrapedEvent): void => {
         success: event.success,
       },
     });
-  } catch {
-    // no-op: analytics must never throw
-  }
+  } catch {}
 };
 
 export const captureScrapeRun = (event: ScrapeRunEvent): void => {
@@ -77,9 +75,7 @@ export const captureScrapeRun = (event: ScrapeRunEvent): void => {
         status: event.status,
       },
     });
-  } catch {
-    // no-op: analytics must never throw
-  }
+  } catch {}
 };
 
 export const captureException = (
@@ -91,9 +87,7 @@ export const captureException = (
       service: SERVICE_NAME,
       ...properties,
     });
-  } catch {
-    // no-op: analytics must never throw
-  }
+  } catch {}
 };
 
 const SHUTDOWN_TIMEOUT_MS = 2_000;
