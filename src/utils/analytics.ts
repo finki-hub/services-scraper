@@ -53,6 +53,7 @@ export const captureScrapeStarted = (event: ScrapeStartedEvent): void => {
       distinctId: SERVICE_NAME,
       event: 'scrape_started',
       properties: {
+        service: SERVICE_NAME,
         source: event.source,
       },
     });
@@ -66,6 +67,7 @@ export const captureNotificationSent = (event: NotificationSentEvent): void => {
       event: 'notification_sent',
       properties: {
         count: event.count,
+        service: SERVICE_NAME,
         source: event.source,
         success: event.success,
       },
@@ -84,6 +86,7 @@ export const captureSourceScraped = (event: SourceScrapedEvent): void => {
         records_added: event.recordsAdded,
         records_total: event.recordsTotal,
         /* eslint-enable camelcase -- PostHog event properties use snake_case */
+        service: SERVICE_NAME,
         source: event.source,
         success: event.success,
       },
