@@ -49,6 +49,7 @@ export type StrategyContext = {
 
 export type StrategyResult = {
   commit: () => void;
+  itemsFound?: number;
   posts: PostData[];
 };
 

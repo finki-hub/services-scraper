@@ -10,7 +10,18 @@ import { setTimeout } from 'node:timers/promises';
 import { type Logger } from 'pino';
 
 import { getConfigProperty } from './configuration/config.js';
-import { type ScraperConfig, type ScraperStrategy } from './lib/Scraper.js';
+import {
+  type ScraperConfig,
+  type ScraperStrategy,
+  type StrategyResult,
+} from './lib/Scraper.js';
+import {
+  captureException,
+  captureNotificationSent,
+  captureScrapeRun,
+  captureScrapeStarted,
+  captureSourceScraped,
+} from './utils/analytics.js';
 import { createMentionComponent, truncateString } from './utils/components.js';
 import { ERROR_MESSAGES, LOG_MESSAGES } from './utils/constants.js';
 import { extractErrorCauses } from './utils/error-causes.js';
@@ -62,6 +73,7 @@ export class Scraper {
   public async run(): Promise<void> {
     while (true) {
       this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.searching}`);
+      captureScrapeStarted({ source: this.scraperName });
 
       try {
         await this.validateCookie();
@@ -73,9 +85,25 @@ export class Scraper {
         continue;
       }
 
+      const start = performance.now();
+
       try {
-        await this.getAndSendPosts();
+        const { itemsFound, itemsNew } = await this.getAndSendPosts();
+        captureScrapeRun({
+          itemsFound,
+          itemsNew,
+          ms: Math.round(performance.now() - start),
+          source: this.scraperName,
+          status: 'success',
+        });
       } catch (error) {
+        captureScrapeRun({
+          itemsFound: 0,
+          itemsNew: 0,
+          ms: Math.round(performance.now() - start),
+          source: this.scraperName,
+          status: 'error',
+        });
         await this.handleError(error, 'while fetching and sending posts');
         await Scraper.sleep(getConfigProperty('errorDelay'));
 
@@ -108,7 +136,10 @@ export class Scraper {
     }
   }
 
-  private async getAndSendPosts(): Promise<void> {
+  private async getAndSendPosts(): Promise<{
+    itemsFound: number;
+    itemsNew: number;
+  }> {
     if (this.cookie === undefined && this.strategy.getCookie !== undefined) {
       try {
         this.cookie = await this.strategy.getCookie();
@@ -121,17 +152,46 @@ export class Scraper {
     const maxPosts =
       this.scraperConfig.maxPosts ?? getConfigProperty('maxPosts');
 
-    const { commit, posts } = await this.strategy.getChanges({
-      cookie: this.cookie,
-      link: this.scraperConfig.link,
-      maxPosts,
-      scraperId: this.scraperName,
+    const scrapeStart = performance.now();
+    let strategyResult: StrategyResult;
+
+    try {
+      strategyResult = await this.strategy.getChanges({
+        cookie: this.cookie,
+        link: this.scraperConfig.link,
+        maxPosts,
+        scraperId: this.scraperName,
+      });
+    } catch (error) {
+      captureSourceScraped({
+        durationMs: Math.round(performance.now() - scrapeStart),
+        recordsAdded: null,
+        recordsTotal: null,
+        source: this.scraperName,
+        success: false,
+      });
+      throw error;
+    }
+
+    const { commit, itemsFound, posts } = strategyResult;
+
+    captureSourceScraped({
+      durationMs: Math.round(performance.now() - scrapeStart),
+      recordsAdded: posts.length,
+      recordsTotal: itemsFound ?? posts.length,
+      source: this.scraperName,
+      success: true,
     });
+
+    const summary = {
+      itemsFound: itemsFound ?? posts.length,
+      itemsNew: posts.length,
+    };
 
     if (posts.length === 0) {
       this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.noNewPosts}`);
 
-      return;
+      return summary;
     }
 
     for (const post of posts) {
@@ -143,11 +203,27 @@ export class Scraper {
     const sendPosts = getConfigProperty('sendPosts');
 
     if (sendPosts) {
-      await this.sendBatch(posts.map((post) => post.component));
-      logger.info(`[${this.scraperName}] ${LOG_MESSAGES.sentNewPosts}`);
+      try {
+        await this.sendBatch(posts.map((post) => post.component));
+        captureNotificationSent({
+          count: posts.length,
+          source: this.scraperName,
+          success: true,
+        });
+        logger.info(`[${this.scraperName}] ${LOG_MESSAGES.sentNewPosts}`);
+      } catch (error) {
+        captureNotificationSent({
+          count: posts.length,
+          source: this.scraperName,
+          success: false,
+        });
+        throw error;
+      }
     }
 
     commit();
+
+    return summary;
   }
 
   private async handleError(
@@ -155,6 +231,11 @@ export class Scraper {
     context?: string,
     code?: string,
   ): Promise<void> {
+    captureException(error, {
+      context,
+      scraper: this.scraperName,
+    });
+
     let errorMessage: string;
     let stackTrace: string | undefined;
 

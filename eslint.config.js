@@ -19,6 +19,7 @@ const config = [
     rules: {
       '@typescript-eslint/restrict-template-expressions': ['off'],
       'class-methods-use-this': ['off'],
+      'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
 ];

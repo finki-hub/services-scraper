@@ -43,6 +43,23 @@ You can select which scrapers to run declaratively (in the configuration with th
 
 There is an example configuration file available at [`config/config.sample.json`](./config/config.sample.json). Copy it to `config/config.json` and edit it to your liking.
 
+### Analytics
+
+PostHog product analytics are wired through environment variables. They are no-ops when `POSTHOG_KEY` is empty (dev/CI/tests emit nothing). The following events are emitted — all metadata only, no scraped content:
+
+- `scrape_started` — emitted before each scraper iteration starts. Properties: `source`.
+- `scrape_run` — emitted after each scraper iteration succeeds or fails. Properties: `source`, `service`, `items_found`, `items_new`, `ms`, `status`.
+- `source_scraped` — emitted after each source scrape succeeds or fails. Properties: `source`, `records_added`, `records_total`, `duration_ms`, `success`.
+- `notification_sent` — emitted after a Discord notification batch succeeds or fails. Properties: `source`, `count`, `success`.
+- Exception capture — emitted for handled scraper errors via PostHog exception capture. Properties include `service`, `context`, and `scraper`; PostHog records the exception message and stack trace only (Node.js does not serialize frame-local variables).
+
+| Variable       | Default                      | Description                            |
+| -------------- | ---------------------------- | -------------------------------------- |
+| `POSTHOG_KEY`  | _empty_                      | PostHog project ingest key (public).   |
+| `POSTHOG_HOST` | `https://eu.i.posthog.com`   | PostHog Cloud EU ingest host.          |
+
+Analytics require an explicit `POSTHOG_KEY` in the environment; without it the scraper runs silently with no telemetry.
+
 ## License
 
 This project is licensed under the terms of the MIT license.
