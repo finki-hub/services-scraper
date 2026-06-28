@@ -7,10 +7,13 @@ export const registerGlobalErrorHandlers = () => {
   const handleShutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down gracefully`);
     closeCache();
-    await shutdownAnalytics();
 
-    // eslint-disable-next-line n/no-process-exit, unicorn/no-process-exit -- Must exit to stop infinite scraper loops and pending timers
-    process.exit(0);
+    try {
+      await shutdownAnalytics();
+    } finally {
+      // eslint-disable-next-line n/no-process-exit, unicorn/no-process-exit -- Must exit to stop infinite scraper loops and pending timers
+      process.exit(0);
+    }
   };
 
   process.on('SIGTERM', () => {
@@ -50,9 +53,12 @@ export const registerGlobalErrorHandlers = () => {
     }
 
     closeCache();
-    await shutdownAnalytics();
 
-    // eslint-disable-next-line n/no-process-exit -- Must exit on uncaught exception to prevent undefined state
-    process.exit(1);
+    try {
+      await shutdownAnalytics();
+    } finally {
+      // eslint-disable-next-line n/no-process-exit -- Must exit on uncaught exception to prevent undefined state
+      process.exit(1);
+    }
   });
 };

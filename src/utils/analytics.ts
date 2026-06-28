@@ -1,3 +1,4 @@
+import { setTimeout } from 'node:timers/promises';
 import { PostHog } from 'posthog-node';
 
 import { logger } from './logger.js';
@@ -95,13 +96,15 @@ export const captureException = (
   }
 };
 
+const SHUTDOWN_TIMEOUT_MS = 2_000;
+
 export const shutdownAnalytics = async (): Promise<void> => {
   if (client === undefined) {
     return;
   }
 
   try {
-    await client.shutdown();
+    await Promise.race([client.shutdown(), setTimeout(SHUTDOWN_TIMEOUT_MS)]);
   } catch (error) {
     logger.error({ error }, 'Failed to flush PostHog analytics');
   }
