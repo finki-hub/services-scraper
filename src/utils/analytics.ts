@@ -39,38 +39,46 @@ export type SourceScrapedEvent = {
 };
 
 export const captureSourceScraped = (event: SourceScrapedEvent): void => {
-  client?.capture({
-    distinctId: SERVICE_NAME,
-    event: 'source_scraped',
-    properties: {
-      /* eslint-disable camelcase -- PostHog event properties use snake_case */
-      duration_ms: event.durationMs,
-      records_added: event.recordsAdded,
-      records_changed: event.recordsChanged,
-      records_removed: event.recordsRemoved,
-      records_total: event.recordsTotal,
-      /* eslint-enable camelcase -- PostHog event properties use snake_case */
-      source: event.source,
-      success: event.success,
-    },
-  });
+  try {
+    client?.capture({
+      distinctId: SERVICE_NAME,
+      event: 'source_scraped',
+      properties: {
+        /* eslint-disable camelcase -- PostHog event properties use snake_case */
+        duration_ms: event.durationMs,
+        records_added: event.recordsAdded,
+        records_changed: event.recordsChanged,
+        records_removed: event.recordsRemoved,
+        records_total: event.recordsTotal,
+        /* eslint-enable camelcase -- PostHog event properties use snake_case */
+        source: event.source,
+        success: event.success,
+      },
+    });
+  } catch {
+    // no-op: analytics must never throw
+  }
 };
 
 export const captureScrapeRun = (event: ScrapeRunEvent): void => {
-  client?.capture({
-    distinctId: SERVICE_NAME,
-    event: 'scrape_run',
-    properties: {
-      /* eslint-disable camelcase -- PostHog event properties use snake_case */
-      items_found: event.itemsFound,
-      items_new: event.itemsNew,
-      /* eslint-enable camelcase -- PostHog event properties use snake_case */
-      ms: event.ms,
-      service: SERVICE_NAME,
-      source: event.source,
-      status: event.status,
-    },
-  });
+  try {
+    client?.capture({
+      distinctId: SERVICE_NAME,
+      event: 'scrape_run',
+      properties: {
+        /* eslint-disable camelcase -- PostHog event properties use snake_case */
+        items_found: event.itemsFound,
+        items_new: event.itemsNew,
+        /* eslint-enable camelcase -- PostHog event properties use snake_case */
+        ms: event.ms,
+        service: SERVICE_NAME,
+        source: event.source,
+        status: event.status,
+      },
+    });
+  } catch {
+    // no-op: analytics must never throw
+  }
 };
 
 export const captureException = (
