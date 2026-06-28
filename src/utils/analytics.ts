@@ -12,7 +12,7 @@ const client =
     ? undefined
     : new PostHog(POSTHOG_KEY, {
         disableGeoip: true,
-        enableExceptionAutocapture: false,
+        enableExceptionAutocapture: true,
         flushAt: 1,
         flushInterval: 0,
         host: POSTHOG_HOST,

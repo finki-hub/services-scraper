@@ -1,4 +1,4 @@
-import { captureException, shutdownAnalytics } from './analytics.js';
+import { shutdownAnalytics } from './analytics.js';
 import { closeCache } from './cache.js';
 import { logger } from './logger.js';
 import { errorWebhook } from './webhooks.js';
@@ -22,12 +22,6 @@ export const registerGlobalErrorHandlers = () => {
 
   process.on('unhandledRejection', async (reason) => {
     logger.error({ reason }, 'Unhandled Promise Rejection');
-    captureException(
-      reason instanceof Error ? reason : new Error(String(reason)),
-      {
-        handler: 'unhandledRejection',
-      },
-    );
 
     const msg =
       `❌ **Unhandled Promise Rejection (global)**\n` +
@@ -43,7 +37,6 @@ export const registerGlobalErrorHandlers = () => {
 
   process.on('uncaughtException', async (err) => {
     logger.error({ err }, 'Uncaught Exception');
-    captureException(err, { handler: 'uncaughtException' });
 
     const msg =
       `🚨 **Uncaught Exception (global)**\n` +
