@@ -278,11 +278,12 @@ export class EduPageStrategy implements ScraperStrategy {
     const previousListingSnapshot = parseListingSnapshot(
       getSnapshot(scraperId, 'listing'),
     );
-    const timetable = await this.fetchTimetable(
-      link,
-      currentListingSnapshot.defaultNum,
-    );
-    const currentCards = this.resolveCards(timetable);
+    const currentCards =
+      currentListingSnapshot.defaultNum === ''
+        ? []
+        : this.resolveCards(
+            await this.fetchTimetable(link, currentListingSnapshot.defaultNum),
+          );
     const cardsKey = `cards:${currentListingSnapshot.defaultNum}`;
     const previousCards = parseCardsSnapshot(getSnapshot(scraperId, cardsKey));
 
