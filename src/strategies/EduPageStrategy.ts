@@ -311,6 +311,16 @@ export class EduPageStrategy implements ScraperStrategy {
       ),
     ];
 
+    if (
+      posts.length === 0 &&
+      currentListingSnapshot.defaultNum === '' &&
+      previousListingSnapshot.defaultNum !== ''
+    ) {
+      commit();
+
+      return { commit: () => {}, posts };
+    }
+
     return { commit, posts };
   }
 
