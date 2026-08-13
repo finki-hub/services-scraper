@@ -321,6 +321,40 @@ describe('WordPress strategies', () => {
     }
   });
 
+  it('neutralizes Discord Markdown breakout payloads', async () => {
+    cacheMocks.getSeenPostIds.mockReturnValue(new Set());
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json([
+        createApiItem({
+          content: {
+            rendered:
+              '<p>[FINKI Login](https://evil.example/phish) @everyone</p>',
+          },
+          link: 'https://finki.ukim.mk/) [Login](https://evil.example/phish',
+          title: {
+            rendered: 'Trusted](https://evil.example/phish)[label',
+          },
+        }),
+      ]),
+    );
+    const { JobsStrategy } = await import('../src/strategies/JobsStrategy.js');
+    const strategy = new JobsStrategy();
+
+    const result = await strategy.getChanges({
+      cookie: undefined,
+      link: 'ignored',
+      maxPosts: 5,
+      scraperId: 'jobs',
+    });
+    const serialized = JSON.stringify(result.posts[0]);
+
+    expect(serialized).not.toContain('](https://evil.example');
+    expect(serialized).not.toContain('@everyone');
+    expect(serialized).toContain(
+      '%29%20%5BLogin%5D%28https://evil.example/phish',
+    );
+  });
+
   it('renders WordPress HTML as plain Discord text with featured media', async () => {
     cacheMocks.getSeenPostIds.mockReturnValue(new Set());
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(

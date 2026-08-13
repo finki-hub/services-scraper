@@ -24,11 +24,20 @@ import {
 import { truncateString } from '../../utils/components.js';
 import { ERROR_MESSAGES } from '../../utils/constants.js';
 
-const FinkiUrlSchema = z.url().refine((value) => {
-  const url = new URL(value);
-
-  return url.protocol === 'https:' && url.hostname === 'finki.ukim.mk';
-}, 'Expected an HTTPS finki.ukim.mk URL');
+const FinkiUrlSchema = z
+  .url()
+  .transform((value) => new URL(value))
+  .refine(
+    (url) => url.protocol === 'https:' && url.hostname === 'finki.ukim.mk',
+    'Expected an HTTPS finki.ukim.mk URL',
+  )
+  .transform((url) =>
+    url.href
+      .replaceAll('(', '%28')
+      .replaceAll(')', '%29')
+      .replaceAll('[', '%5B')
+      .replaceAll(']', '%5D'),
+  );
 const RenderedSchema = z.object({ rendered: z.string() });
 const WordPressItemSchema = z.object({
   _embedded: z
@@ -58,6 +67,21 @@ const MIGRATION_SNAPSHOT_KEY = 'wordpress-rest-migrated';
 
 const plainText = (html: string): string =>
   cheerio.load(html).root().text().replaceAll(/\s+/gu, ' ').trim();
+
+const escapeDiscordText = (text: string): string =>
+  escapeMarkdown(
+    text
+      .replaceAll('[', '［')
+      .replaceAll(']', '］')
+      .replaceAll('(', '（')
+      .replaceAll(')', '）'),
+    {
+      bulletedList: true,
+      heading: true,
+      maskedLink: true,
+      numberedList: true,
+    },
+  ).replaceAll('@', '@\u{200B}');
 
 export abstract class WordPressStrategy implements ScraperStrategy {
   public abstract collection: string;
@@ -89,7 +113,7 @@ export abstract class WordPressStrategy implements ScraperStrategy {
   }
 
   protected getPostData(item: WordPressItem): PostData {
-    const title = escapeMarkdown(truncateString(this.getTitle(item)));
+    const title = escapeDiscordText(truncateString(this.getTitle(item)));
     const textDisplayComponents = [
       new TextDisplayBuilder().setContent(
         this.includeContent
@@ -104,7 +128,7 @@ export abstract class WordPressStrategy implements ScraperStrategy {
         new TextDisplayBuilder().setContent(
           content === ''
             ? 'Нема опис.'
-            : escapeMarkdown(truncateString(content)),
+            : escapeDiscordText(truncateString(content)),
         ),
       );
     }
