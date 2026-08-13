@@ -107,3 +107,63 @@ test('does not mark posts seen when webhook delivery fails', async () => {
   await expect(scraper.run()).rejects.toThrow(stopScraperRegex);
   expect(commitCalls).toStrictEqual([]);
 });
+
+test('commits cache migration when a strategy suppresses all posts', async () => {
+  const commit = vi.fn<() => void>();
+
+  vi.doMock('discord.js', () => ({
+    codeBlock: (value: string) => `\`\`\`\n${value}\n\`\`\``,
+    MessageFlagsBitField: { Flags: { IsComponentsV2: 32_768 } },
+    roleMention: (roleId: string) => `<@&${roleId}>`,
+    TextDisplayBuilder: class TextDisplayBuilder {
+      public toJSON() {
+        return { type: 10 };
+      }
+    },
+    WebhookClient: class WebhookClient {
+      public send(): Promise<void> {
+        return Promise.resolve();
+      }
+    },
+  }));
+  vi.doMock('../src/configuration/config.js', () => ({
+    getConfigProperty: (property: string) => {
+      const config: Record<string, unknown> = {
+        errorDelay: 1,
+        errorWebhook: '',
+        maxPosts: 20,
+        scrapers: {
+          migration: {
+            link: 'https://finki.ukim.mk/wp-json/wp/v2/announcement',
+            strategy: 'migration',
+          },
+        },
+        sendPosts: true,
+        successDelay: 1,
+        webhook: '',
+      };
+
+      return config[property];
+    },
+  }));
+  vi.doMock('../src/utils/logger.js', () => ({
+    logger: {
+      error: vi.fn<(...args: unknown[]) => void>(),
+      info: vi.fn<(...args: unknown[]) => void>(),
+    },
+  }));
+  vi.doMock('../src/utils/strategies.js', () => ({
+    createStrategy: () => ({
+      getChanges: (): Promise<StrategyResult> =>
+        Promise.resolve({ commit, itemsFound: 20, posts: [] }),
+    }),
+  }));
+  vi.doMock('../src/utils/webhooks.js', () => ({ errorWebhook: undefined }));
+
+  const { Scraper } = await import('../src/Scraper.js');
+  vi.spyOn(Scraper, 'sleep').mockRejectedValue(new Error('stop scraper'));
+  const scraper = new Scraper('migration');
+
+  await expect(scraper.run()).rejects.toThrow(stopScraperRegex);
+  expect(commit).toHaveBeenCalledOnce();
+});
