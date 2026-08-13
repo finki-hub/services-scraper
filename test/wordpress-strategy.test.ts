@@ -268,6 +268,59 @@ describe('WordPress strategies', () => {
     ).rejects.toThrow('Failed to fetch');
   });
 
+  it('does not finalize migration from an empty WordPress collection', async () => {
+    cacheMocks.getSeenPostIds.mockReturnValue(
+      new Set(['https://finki.ukim.mk/mk/content/legacy']),
+    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json([]));
+    const { JobsStrategy } = await import('../src/strategies/JobsStrategy.js');
+    const strategy = new JobsStrategy();
+
+    await expect(
+      strategy.getChanges({
+        cookie: undefined,
+        link: 'ignored',
+        maxPosts: 5,
+        scraperId: 'jobs',
+      }),
+    ).rejects.toThrow('Posts not found');
+    expect(cacheMocks.markPostsSeen).not.toHaveBeenCalled();
+    expect(cacheMocks.setSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('rejects external WordPress post and media URLs', async () => {
+    cacheMocks.getSeenPostIds.mockReturnValue(new Set());
+    const { JobsStrategy } = await import('../src/strategies/JobsStrategy.js');
+    const strategy = new JobsStrategy();
+
+    for (const item of [
+      createApiItem({ link: 'https://evil.example/phishing' }),
+      createApiItem({
+        _embedded: {
+          'wp:featuredmedia': [
+            {
+              // eslint-disable-next-line camelcase -- WordPress REST API fixture field
+              source_url: 'https://evil.example/image.png',
+            },
+          ],
+        },
+      }),
+    ]) {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        Response.json([item]),
+      );
+
+      await expect(
+        strategy.getChanges({
+          cookie: undefined,
+          link: 'ignored',
+          maxPosts: 5,
+          scraperId: 'jobs',
+        }),
+      ).rejects.toThrow('Expected an HTTPS finki.ukim.mk URL');
+    }
+  });
+
   it('renders WordPress HTML as plain Discord text with featured media', async () => {
     cacheMocks.getSeenPostIds.mockReturnValue(new Set());
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(

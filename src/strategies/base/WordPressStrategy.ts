@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import {
   ContainerBuilder,
+  escapeMarkdown,
   heading,
   hyperlink,
   TextDisplayBuilder,
@@ -23,6 +24,11 @@ import {
 import { truncateString } from '../../utils/components.js';
 import { ERROR_MESSAGES } from '../../utils/constants.js';
 
+const FinkiUrlSchema = z.url().refine((value) => {
+  const url = new URL(value);
+
+  return url.protocol === 'https:' && url.hostname === 'finki.ukim.mk';
+}, 'Expected an HTTPS finki.ukim.mk URL');
 const RenderedSchema = z.object({ rendered: z.string() });
 const WordPressItemSchema = z.object({
   _embedded: z
@@ -31,7 +37,7 @@ const WordPressItemSchema = z.object({
         .array(
           z.object({
             // eslint-disable-next-line camelcase -- WordPress REST API field name
-            source_url: z.url(),
+            source_url: FinkiUrlSchema,
           }),
         )
         .optional(),
@@ -39,7 +45,7 @@ const WordPressItemSchema = z.object({
     .optional(),
   content: RenderedSchema.optional(),
   id: z.number().int(),
-  link: z.url(),
+  link: FinkiUrlSchema,
   title: RenderedSchema,
 });
 const WordPressItemsSchema = z.array(WordPressItemSchema);
@@ -83,7 +89,7 @@ export abstract class WordPressStrategy implements ScraperStrategy {
   }
 
   protected getPostData(item: WordPressItem): PostData {
-    const title = truncateString(this.getTitle(item));
+    const title = escapeMarkdown(truncateString(this.getTitle(item)));
     const textDisplayComponents = [
       new TextDisplayBuilder().setContent(
         this.includeContent
@@ -96,7 +102,9 @@ export abstract class WordPressStrategy implements ScraperStrategy {
       const content = plainText(item.content?.rendered ?? '');
       textDisplayComponents.push(
         new TextDisplayBuilder().setContent(
-          content === '' ? 'Нема опис.' : truncateString(content),
+          content === ''
+            ? 'Нема опис.'
+            : escapeMarkdown(truncateString(content)),
         ),
       );
     }
@@ -144,6 +152,10 @@ export abstract class WordPressStrategy implements ScraperStrategy {
       if (pageItems.length < pageSize) {
         break;
       }
+    }
+
+    if (items.length === 0) {
+      throw new Error(ERROR_MESSAGES.postsNotFound);
     }
 
     return items;
