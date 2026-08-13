@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const cacheMocks = vi.hoisted(() => ({
   getSeenPostIds: vi.fn<(scraperId: string) => Set<string>>(),
+  getSnapshot: vi.fn<(scraperId: string, key: string) => string | undefined>(),
   markPostsSeen:
     vi.fn<(scraperId: string, postIds: Array<null | string>) => void>(),
+  setSnapshot: vi.fn<(scraperId: string, key: string, value: string) => void>(),
 }));
 
 vi.mock('../src/utils/cache.js', () => cacheMocks);
@@ -30,7 +32,9 @@ const createApiItem = (overrides: Record<string, unknown> = {}) => ({
 afterEach(() => {
   vi.restoreAllMocks();
   cacheMocks.getSeenPostIds.mockReset();
+  cacheMocks.getSnapshot.mockReset();
   cacheMocks.markPostsSeen.mockReset();
+  cacheMocks.setSnapshot.mockReset();
 });
 
 describe('WordPress strategies', () => {
@@ -69,7 +73,7 @@ describe('WordPress strategies', () => {
       });
 
       expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
-        `https://finki.ukim.mk/wp-json/wp/v2/${collection}?per_page=5&page=1&_embed=1`,
+        `https://finki.ukim.mk/wp-json/wp/v2/${collection}?per_page=5&offset=0&_embed=1`,
       );
       expect(result.itemsFound).toBe(1);
       expect(result.posts).toHaveLength(1);
@@ -77,8 +81,13 @@ describe('WordPress strategies', () => {
       result.commit();
 
       expect(cacheMocks.markPostsSeen).toHaveBeenCalledWith(collection, [
-        'https://finki.ukim.mk/jobs-and-internships/current-item/',
+        `wordpress:${collection}:42`,
       ]);
+      expect(cacheMocks.setSnapshot).toHaveBeenCalledWith(
+        collection,
+        'wordpress-rest-migrated',
+        '1',
+      );
     },
   );
 
@@ -104,16 +113,16 @@ describe('WordPress strategies', () => {
     result.commit();
 
     expect(cacheMocks.markPostsSeen).toHaveBeenCalledWith('jobs', [
-      'https://finki.ukim.mk/jobs-and-internships/current-item/',
+      'wordpress:jobs-and-internships:42',
     ]);
   });
 
   it('continues normally after canonical WordPress IDs are seeded', async () => {
-    const canonicalId =
-      'https://finki.ukim.mk/jobs-and-internships/current-item/';
+    const canonicalId = 'wordpress:jobs-and-internships:42';
     cacheMocks.getSeenPostIds.mockReturnValue(
       new Set([canonicalId, 'https://finki.ukim.mk/mk/content/legacy']),
     );
+    cacheMocks.getSnapshot.mockReturnValue('1');
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       Response.json([
         createApiItem(),
@@ -135,9 +144,28 @@ describe('WordPress strategies', () => {
     });
 
     expect(result.posts).toHaveLength(1);
-    expect(result.posts[0]?.id).toBe(
-      'https://finki.ukim.mk/jobs-and-internships/new-item/',
+    expect(result.posts[0]?.id).toBe('wordpress:jobs-and-internships:43');
+  });
+
+  it('delivers a disjoint window after migration is marked complete', async () => {
+    cacheMocks.getSeenPostIds.mockReturnValue(
+      new Set(['wordpress:jobs-and-internships:1']),
     );
+    cacheMocks.getSnapshot.mockReturnValue('1');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json([createApiItem({ id: 42 }), createApiItem({ id: 43 })]),
+    );
+    const { JobsStrategy } = await import('../src/strategies/JobsStrategy.js');
+    const strategy = new JobsStrategy();
+
+    const result = await strategy.getChanges({
+      cookie: undefined,
+      link: 'ignored',
+      maxPosts: 5,
+      scraperId: 'jobs',
+    });
+
+    expect(result.posts).toHaveLength(2);
   });
 
   it('paginates WordPress requests above the collection page limit', async () => {
@@ -171,13 +199,73 @@ describe('WordPress strategies', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'https://finki.ukim.mk/wp-json/wp/v2/jobs-and-internships?per_page=100&page=1&_embed=1',
+      'https://finki.ukim.mk/wp-json/wp/v2/jobs-and-internships?per_page=100&offset=0&_embed=1',
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://finki.ukim.mk/wp-json/wp/v2/jobs-and-internships?per_page=1&page=2&_embed=1',
+      'https://finki.ukim.mk/wp-json/wp/v2/jobs-and-internships?per_page=1&offset=100&_embed=1',
     );
     expect(result.itemsFound).toBe(101);
+    expect(new Set(result.posts.map(({ id }) => id)).size).toBe(101);
+  });
+
+  it('does not request another page when maxPosts is exactly one full page', async () => {
+    cacheMocks.getSeenPostIds.mockReturnValue(new Set());
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        Response.json(
+          Array.from({ length: 100 }, (_, index) =>
+            createApiItem({ id: index }),
+          ),
+        ),
+      );
+    const { JobsStrategy } = await import('../src/strategies/JobsStrategy.js');
+    const strategy = new JobsStrategy();
+
+    const result = await strategy.getChanges({
+      cookie: undefined,
+      link: 'ignored',
+      maxPosts: 100,
+      scraperId: 'jobs',
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(result.itemsFound).toBe(100);
+  });
+
+  it('reports non-success WordPress responses', async () => {
+    cacheMocks.getSeenPostIds.mockReturnValue(new Set());
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 503 }),
+    );
+    const { JobsStrategy } = await import('../src/strategies/JobsStrategy.js');
+    const strategy = new JobsStrategy();
+
+    await expect(
+      strategy.getChanges({
+        cookie: undefined,
+        link: 'ignored',
+        maxPosts: 5,
+        scraperId: 'jobs',
+      }),
+    ).rejects.toThrow('Bad response code: 503');
+  });
+
+  it('reports WordPress network failures', async () => {
+    cacheMocks.getSeenPostIds.mockReturnValue(new Set());
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'));
+    const { JobsStrategy } = await import('../src/strategies/JobsStrategy.js');
+    const strategy = new JobsStrategy();
+
+    await expect(
+      strategy.getChanges({
+        cookie: undefined,
+        link: 'ignored',
+        maxPosts: 5,
+        scraperId: 'jobs',
+      }),
+    ).rejects.toThrow('Failed to fetch');
   });
 
   it('renders WordPress HTML as plain Discord text with featured media', async () => {

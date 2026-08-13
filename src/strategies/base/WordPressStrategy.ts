@@ -14,7 +14,12 @@ import type {
   StrategyResult,
 } from '../../lib/Scraper.js';
 
-import { getSeenPostIds, markPostsSeen } from '../../utils/cache.js';
+import {
+  getSeenPostIds,
+  getSnapshot,
+  markPostsSeen,
+  setSnapshot,
+} from '../../utils/cache.js';
 import { truncateString } from '../../utils/components.js';
 import { ERROR_MESSAGES } from '../../utils/constants.js';
 
@@ -43,6 +48,7 @@ type WordPressItem = z.infer<typeof WordPressItemSchema>;
 
 const API_BASE_URL = 'https://finki.ukim.mk/wp-json/wp/v2';
 const MAX_PAGE_SIZE = 100;
+const MIGRATION_SNAPSHOT_KEY = 'wordpress-rest-migrated';
 
 const plainText = (html: string): string =>
   cheerio.load(html).root().text().replaceAll(/\s+/gu, ' ').trim();
@@ -55,19 +61,21 @@ export abstract class WordPressStrategy implements ScraperStrategy {
   public async getChanges(context: StrategyContext): Promise<StrategyResult> {
     const items = await this.fetchItems(context.maxPosts);
     const seenIds = getSeenPostIds(context.scraperId);
-    const ids = items.map(({ link }) => link);
-    const hasCanonicalIds = ids.some((id) => seenIds.has(id));
+    const ids = items.map((item) => this.getId(item));
+    const isMigrated =
+      getSnapshot(context.scraperId, MIGRATION_SNAPSHOT_KEY) === '1';
     const posts =
-      seenIds.size > 0 && !hasCanonicalIds
+      seenIds.size > 0 && !isMigrated
         ? []
         : items
-            .filter((item) => !seenIds.has(item.link))
+            .filter((item) => !seenIds.has(this.getId(item)))
             .toReversed()
             .map((item) => this.getPostData(item));
 
     return {
       commit: () => {
         markPostsSeen(context.scraperId, ids);
+        setSnapshot(context.scraperId, MIGRATION_SNAPSHOT_KEY, '1');
       },
       itemsFound: items.length,
       posts,
@@ -106,17 +114,16 @@ export abstract class WordPressStrategy implements ScraperStrategy {
                 .addTextDisplayComponents(textDisplayComponents)
                 .setThumbnailAccessory((thumbnail) => thumbnail.setURL(image)),
             ),
-      id: item.link,
+      id: this.getId(item),
     };
   }
 
   private async fetchItems(maxPosts: number): Promise<WordPressItem[]> {
     const items: WordPressItem[] = [];
-    let page = 1;
 
     while (items.length < maxPosts) {
       const pageSize = Math.min(MAX_PAGE_SIZE, maxPosts - items.length);
-      const url = `${API_BASE_URL}/${this.collection}?per_page=${pageSize}&page=${page}&_embed=1`;
+      const url = `${API_BASE_URL}/${this.collection}?per_page=${pageSize}&offset=${items.length}&_embed=1`;
       let response: Response;
 
       try {
@@ -137,11 +144,13 @@ export abstract class WordPressStrategy implements ScraperStrategy {
       if (pageItems.length < pageSize) {
         break;
       }
-
-      page += 1;
     }
 
     return items;
+  }
+
+  private getId(item: WordPressItem): string {
+    return `wordpress:${this.collection}:${item.id}`;
   }
 
   private getTitle(item: WordPressItem): string {
