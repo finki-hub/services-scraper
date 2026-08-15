@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const cacheMocks = vi.hoisted(() => ({
+  getLatestLegacySeenAt: vi.fn<(scraperId: string) => number | undefined>(),
   getSeenPostIds: vi.fn<(scraperId: string) => Set<string>>(),
   getSnapshot: vi.fn<(scraperId: string, key: string) => string | undefined>(),
   markPostsSeen:
@@ -23,6 +24,8 @@ const createApiItem = (overrides: Record<string, unknown> = {}) => ({
     ],
   },
   content: { rendered: '<p>Current <strong>description</strong>.</p>' },
+  // eslint-disable-next-line camelcase -- WordPress REST API fixture field
+  date_gmt: '1970-01-01T00:01:50',
   id: 42,
   link: 'https://finki.ukim.mk/jobs-and-internships/current-item/',
   title: { rendered: 'Current &amp; item' },
@@ -31,6 +34,7 @@ const createApiItem = (overrides: Record<string, unknown> = {}) => ({
 
 afterEach(() => {
   vi.restoreAllMocks();
+  cacheMocks.getLatestLegacySeenAt.mockReset();
   cacheMocks.getSeenPostIds.mockReset();
   cacheMocks.getSnapshot.mockReset();
   cacheMocks.markPostsSeen.mockReset();
@@ -83,20 +87,21 @@ describe('WordPress strategies', () => {
       expect(cacheMocks.markPostsSeen).toHaveBeenCalledWith(collection, [
         `wordpress:${collection}:42`,
       ]);
-      expect(cacheMocks.setSnapshot).toHaveBeenCalledWith(
-        collection,
-        'wordpress-rest-migrated',
-        '1',
-      );
     },
   );
 
   it('preserves legacy cache identity while committing the canonical WordPress ID', async () => {
     const legacyId = 'https://finki.ukim.mk/mk/content/current-item';
+    cacheMocks.getLatestLegacySeenAt.mockReturnValue(100);
     cacheMocks.getSeenPostIds.mockReturnValue(new Set([legacyId]));
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(Response.json([createApiItem()]));
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json([
+        createApiItem({
+          // eslint-disable-next-line camelcase -- WordPress REST API fixture field
+          date_gmt: '1970-01-01T00:01:30',
+        }),
+      ]),
+    );
     const { JobsStrategy } = await import('../src/strategies/JobsStrategy.js');
     const strategy = new JobsStrategy();
 
@@ -115,6 +120,11 @@ describe('WordPress strategies', () => {
     expect(cacheMocks.markPostsSeen).toHaveBeenCalledWith('jobs', [
       'wordpress:jobs-and-internships:42',
     ]);
+    expect(cacheMocks.setSnapshot).toHaveBeenCalledWith(
+      'jobs',
+      'wordpress-rest-cutover',
+      '100',
+    );
   });
 
   it('continues normally after canonical WordPress IDs are seeded', async () => {
@@ -122,7 +132,7 @@ describe('WordPress strategies', () => {
     cacheMocks.getSeenPostIds.mockReturnValue(
       new Set([canonicalId, 'https://finki.ukim.mk/mk/content/legacy']),
     );
-    cacheMocks.getSnapshot.mockReturnValue('1');
+    cacheMocks.getSnapshot.mockReturnValue('100');
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       Response.json([
         createApiItem(),
@@ -147,11 +157,11 @@ describe('WordPress strategies', () => {
     expect(result.posts[0]?.id).toBe('wordpress:jobs-and-internships:43');
   });
 
-  it('delivers a disjoint window after migration is marked complete', async () => {
+  it('delivers a window disjoint from canonical cache IDs', async () => {
     cacheMocks.getSeenPostIds.mockReturnValue(
       new Set(['wordpress:jobs-and-internships:1']),
     );
-    cacheMocks.getSnapshot.mockReturnValue('1');
+    cacheMocks.getSnapshot.mockReturnValue('100');
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       Response.json([createApiItem({ id: 42 }), createApiItem({ id: 43 })]),
     );
@@ -268,10 +278,8 @@ describe('WordPress strategies', () => {
     ).rejects.toThrow('Failed to fetch');
   });
 
-  it('does not finalize migration from an empty WordPress collection', async () => {
-    cacheMocks.getSeenPostIds.mockReturnValue(
-      new Set(['https://finki.ukim.mk/mk/content/legacy']),
-    );
+  it('does not commit an empty WordPress collection', async () => {
+    cacheMocks.getSeenPostIds.mockReturnValue(new Set());
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json([]));
     const { JobsStrategy } = await import('../src/strategies/JobsStrategy.js');
     const strategy = new JobsStrategy();
@@ -285,7 +293,6 @@ describe('WordPress strategies', () => {
       }),
     ).rejects.toThrow('Posts not found');
     expect(cacheMocks.markPostsSeen).not.toHaveBeenCalled();
-    expect(cacheMocks.setSnapshot).not.toHaveBeenCalled();
   });
 
   it('rejects external WordPress post and media URLs', async () => {
