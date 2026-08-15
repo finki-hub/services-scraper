@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as CacheExports from '../src/utils/cache.js';
@@ -92,6 +93,28 @@ describe('SQLite seen-post cache', () => {
       new Set(['shared-id']),
     );
     expect(cache.getSeenPostIds('events')).toStrictEqual(new Set());
+  });
+
+  it('returns the latest legacy timestamp without WordPress IDs', async () => {
+    const cache = await loadCache();
+    cache.markPostsSeen('announcements', ['legacy-older', 'legacy-newer']);
+    cache.markPostsSeen('announcements', ['wordpress:announcement:42']);
+    cache.markPostsSeen('wordpress-only', ['wordpress:announcement:43']);
+    const database = new DatabaseSync(
+      join(state.cachePath, 'scraper-cache.db'),
+    );
+    const updateTimestamp = database.prepare(`
+      UPDATE seen_posts
+      SET last_seen_at = ?
+      WHERE scraper_id = ? AND post_id = ?
+    `);
+    updateTimestamp.run(100, 'announcements', 'legacy-older');
+    updateTimestamp.run(200, 'announcements', 'legacy-newer');
+    updateTimestamp.run(300, 'announcements', 'wordpress:announcement:42');
+    database.close();
+
+    expect(cache.getLatestLegacySeenAt('announcements')).toBe(200);
+    expect(cache.getLatestLegacySeenAt('wordpress-only')).toBeUndefined();
   });
 
   it('persists IDs after closing and reopening the cache module', async () => {
