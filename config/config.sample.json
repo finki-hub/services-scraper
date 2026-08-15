@@ -12,7 +12,7 @@
   "scrapers": {
     "announcements": {
       "strategy": "announcements",
-      "link": "https://www.finki.ukim.mk/mk/student-announcement",
+      "link": "https://finki.ukim.mk/wp-json/wp/v2/announcement",
       "name": "Огласна табла",
       "role": "1333926602739810427",
       "webhook": "your_announcement_webhook",
@@ -20,7 +20,7 @@
     },
     "jobs": {
       "strategy": "jobs",
-      "link": "https://www.finki.ukim.mk/mk/fcse-jobs-internships",
+      "link": "https://finki.ukim.mk/wp-json/wp/v2/jobs-and-internships",
       "name": "Огласи",
       "webhook": "your_jobs_webhook",
       "enabled": true
@@ -34,13 +34,13 @@
     },
     "events": {
       "strategy": "events",
-      "link": "https://finki.ukim.mk/mk/fcse-events",
+      "link": "https://finki.ukim.mk/wp-json/wp/v2/event",
       "name": "Настани",
       "enabled": false
     },
     "projects": {
       "strategy": "projects",
-      "link": "https://finki.ukim.mk/mk/fcse-projects",
+      "link": "https://finki.ukim.mk/wp-json/wp/v2/project",
       "name": "Проекти",
       "enabled": false
     },
@@ -76,7 +76,7 @@
     },
     "timetables": {
       "strategy": "timetables",
-      "link": "https://www.finki.ukim.mk/mk/student-announcement",
+      "link": "https://finki.ukim.mk/wp-json/wp/v2/schedule",
       "name": "Распореди",
       "enabled": false
     },

@@ -1,48 +1,7 @@
-import type { Cheerio } from 'cheerio';
-import type { Element } from 'domhandler';
+import { WordPressStrategy } from './base/WordPressStrategy.js';
 
-import { ContainerBuilder, heading, hyperlink } from 'discord.js';
+export class TimetablesStrategy extends WordPressStrategy {
+  public collection = 'schedule';
 
-import type { PostData } from '../lib/Post.js';
-
-import { truncateString } from '../utils/components.js';
-import { normalizeURL } from '../utils/links.js';
-import { HtmlStrategy } from './base/HtmlStrategy.js';
-
-export class TimetablesStrategy extends HtmlStrategy {
-  public idsSelector = 'a';
-
-  public postsSelector = 'div.col-sm-11';
-
-  public getId($element: Cheerio<Element>): null | string {
-    const id = $element
-      .find(this.idsSelector)
-      .text()
-      .replaceAll(/\s+/gu, ' ')
-      .trim();
-
-    return id === '' ? null : id;
-  }
-
-  public getPostData($element: Cheerio<Element>): PostData {
-    const url = $element.find('a').attr('href')?.trim();
-    const link =
-      url === undefined ? null : normalizeURL(url, 'https://finki.ukim.mk');
-
-    const title = truncateString(
-      $element.find('a').text().replaceAll(/\s+/gu, ' ').trim() || '?',
-    );
-
-    const component = new ContainerBuilder().addTextDisplayComponents(
-      (textDisplayComponent) =>
-        textDisplayComponent.setContent(
-          heading(link === null ? title : hyperlink(title, link), 2),
-        ),
-    );
-
-    return {
-      component,
-      id: this.getId($element),
-    };
-  }
+  public override includeContent = false;
 }

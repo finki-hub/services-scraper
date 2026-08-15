@@ -9,6 +9,7 @@ import { logger } from './logger.js';
 const DB_FILE_NAME = 'scraper-cache.db';
 const DB_PATH = join(CACHE_PATH, DB_FILE_NAME);
 
+const LatestSeenRowSchema = z.tuple([z.number().int().nullable()]).optional();
 const PostIdRowsSchema = z.array(z.tuple([z.string()]));
 const SnapshotRowSchema = z.tuple([z.string()]).optional();
 
@@ -92,6 +93,12 @@ const prepareStatement = (
 const SEEN_POSTS_SELECT_SQL =
   'SELECT post_id FROM seen_posts WHERE scraper_id = ?';
 
+const LATEST_LEGACY_SEEN_SELECT_SQL = `
+  SELECT MAX(last_seen_at)
+  FROM seen_posts
+  WHERE scraper_id = ? AND post_id NOT LIKE 'wordpress:%'
+`;
+
 const SEEN_POSTS_UPSERT_SQL = `
   INSERT INTO seen_posts (scraper_id, post_id, first_seen_at, last_seen_at)
   VALUES (?, ?, unixepoch(), unixepoch())
@@ -119,6 +126,19 @@ export const getSeenPostIds = (scraperId: string): Set<string> => {
   const rows = PostIdRowsSchema.parse(select.all(scraperId));
 
   return new Set(rows.map(([id]) => id));
+};
+
+export const getLatestLegacySeenAt = (
+  scraperId: string,
+): number | undefined => {
+  const select = prepareStatement(
+    'latestLegacySeenSelect',
+    LATEST_LEGACY_SEEN_SELECT_SQL,
+    true,
+  );
+  const row = LatestSeenRowSchema.parse(select.get(scraperId));
+
+  return row?.[0] ?? undefined;
 };
 
 export const markPostsSeen = (

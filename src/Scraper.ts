@@ -190,6 +190,7 @@ export class Scraper {
 
     if (posts.length === 0) {
       this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.noNewPosts}`);
+      commit();
 
       return summary;
     }

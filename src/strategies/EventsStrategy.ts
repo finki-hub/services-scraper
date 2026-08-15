@@ -1,5 +1,5 @@
-import { FinkiNewsStrategy } from './base/FinkiNewsStrategy.js';
+import { WordPressStrategy } from './base/WordPressStrategy.js';
 
-export class EventsStrategy extends FinkiNewsStrategy {
-  public postsSelector = 'div.news-item';
+export class EventsStrategy extends WordPressStrategy {
+  public collection = 'event';
 }

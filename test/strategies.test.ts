@@ -160,7 +160,7 @@ describe('CourseStrategy', () => {
 });
 
 describe('TimetablesStrategy', () => {
-  it('collapses ID whitespace and normalizes relative links', async () => {
+  it('uses the WordPress schedule collection without content previews', async () => {
     vi.doMock(configModulePath, () => ({
       getConfigProperty: () => {},
     }));
@@ -168,17 +168,10 @@ describe('TimetablesStrategy', () => {
     const { TimetablesStrategy } =
       await import('../src/strategies/TimetablesStrategy.js');
     const strategy = new TimetablesStrategy();
-    const $element = loadElement(
-      '<div><a href="documents/schedule.pdf"> Summer \n timetable </a></div>',
-      'div',
-    );
-    const post = strategy.getPostData($element);
-    const strings = collectStrings(post.component.toJSON()).join('\n');
 
-    expect(strategy.getId($element)).toBe('Summer timetable');
-    expect(post.id).toBe('Summer timetable');
-    expect(strings).toContain('Summer timetable');
-    expect(strings).toContain('https://finki.ukim.mk/documents/schedule.pdf');
+    expect(strategy.collection).toBe('schedule');
+    // eslint-disable-next-line vitest/prefer-to-be-falsy -- assert the exact public option value
+    expect(strategy.includeContent).toBe(false);
   });
 });
 
@@ -245,29 +238,29 @@ describe('InternshipsStrategy', () => {
   });
 });
 
-describe('JobsStrategy, EventsStrategy, and ProjectsStrategy', () => {
+describe('WordPress content strategies', () => {
   it.each([
     {
+      collection: 'jobs-and-internships',
       exportName: 'JobsStrategy',
       modulePath: '../src/strategies/JobsStrategy.js',
       name: 'jobs',
-      selector: 'div.views-row',
     },
     {
+      collection: 'event',
       exportName: 'EventsStrategy',
       modulePath: '../src/strategies/EventsStrategy.js',
       name: 'events',
-      selector: 'div.news-item',
     },
     {
+      collection: 'project',
       exportName: 'ProjectsStrategy',
       modulePath: '../src/strategies/ProjectsStrategy.js',
       name: 'projects',
-      selector: 'div.news-item',
     },
   ])(
-    'parses $name cards with image thumbnails',
-    async ({ exportName, modulePath, selector }) => {
+    'maps $name to its WordPress collection and legacy selector',
+    async ({ collection, exportName, modulePath }) => {
       vi.doMock(configModulePath, () => ({
         getConfigProperty: () => {},
       }));
@@ -275,10 +268,7 @@ describe('JobsStrategy, EventsStrategy, and ProjectsStrategy', () => {
       const strategyModule = (await import(modulePath)) as Record<
         string,
         new () => {
-          getPostData: ($element: Cheerio<Element>) => {
-            component: { toJSON: () => unknown };
-            id: null | string;
-          };
+          collection: string;
         }
       >;
       const StrategyClass = strategyModule[exportName];
@@ -288,24 +278,8 @@ describe('JobsStrategy, EventsStrategy, and ProjectsStrategy', () => {
       }
 
       const strategy = new StrategyClass();
-      const $element = loadElement(
-        `
-        <div class="${selector.replace('div.', '')}">
-          <a href="/ignored">Ignored</a><a href="/mk/item">Important title</a>
-          <div class="col-xs-12 col-sm-8"><div class="field-content">Important content</div></div>
-          <img src="https://finki.ukim.mk/image.png?itok=abc" />
-        </div>
-      `,
-        'div',
-      );
-      const post = strategy.getPostData($element);
-      const strings = collectStrings(post.component.toJSON()).join('\n');
 
-      expect(post.id).toBe('https://finki.ukim.mk/mk/item');
-      expect(strings).toContain('Important title');
-      expect(strings).toContain('https://finki.ukim.mk/mk/item');
-      expect(strings).toContain('Important content');
-      expect(strings).toContain('https://finki.ukim.mk/image.png');
+      expect(strategy.collection).toBe(collection);
     },
   );
 });

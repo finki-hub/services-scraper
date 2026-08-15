@@ -170,21 +170,25 @@ describe('configuration schemas', () => {
 
 describe('createStrategy', () => {
   it.each([
-    [Strategy.Activities, 'li.activity'],
-    [Strategy.Announcements, 'div.views-row'],
-    [Strategy.Course, 'article'],
-    [Strategy.Diplomas, 'div.panel'],
-    [Strategy.Events, 'div.news-item'],
-    [Strategy.Example, 'Selector for all data containers'],
-    [Strategy.Internships, 'div.container div.row > div.col > div.card'],
-    [Strategy.Jobs, 'div.views-row'],
-    [Strategy.Masters, 'div.row.rounded'],
-    [Strategy.Partners, 'div.card, div.support'],
-    [Strategy.Projects, 'div.news-item'],
-    [Strategy.Timetables, 'div.col-sm-11'],
+    [Strategy.Activities, 'postsSelector', 'li.activity'],
+    [Strategy.Announcements, 'collection', 'announcement'],
+    [Strategy.Course, 'postsSelector', 'article'],
+    [Strategy.Diplomas, 'postsSelector', 'div.panel'],
+    [Strategy.Events, 'collection', 'event'],
+    [Strategy.Example, 'postsSelector', 'Selector for all data containers'],
+    [
+      Strategy.Internships,
+      'postsSelector',
+      'div.container div.row > div.col > div.card',
+    ],
+    [Strategy.Jobs, 'collection', 'jobs-and-internships'],
+    [Strategy.Masters, 'postsSelector', 'div.row.rounded'],
+    [Strategy.Partners, 'postsSelector', 'div.card, div.support'],
+    [Strategy.Projects, 'collection', 'project'],
+    [Strategy.Timetables, 'collection', 'schedule'],
   ])(
     'returns a strategy instance for %s',
-    async (strategyName, postsSelector) => {
+    async (strategyName, property, expectedValue) => {
       vi.doMock('../src/configuration/config.js', () => ({
         getConfigProperty: () => {},
       }));
@@ -192,7 +196,7 @@ describe('createStrategy', () => {
       const { createStrategy } = await import('../src/utils/strategies.js');
       const strategy = createStrategy(strategyName);
 
-      expect(strategy).toHaveProperty('postsSelector', postsSelector);
+      expect(strategy).toHaveProperty(property, expectedValue);
     },
   );
 
