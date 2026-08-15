@@ -251,7 +251,10 @@ export abstract class WordPressStrategy implements ScraperStrategy {
         items.set(this.getId(item), item);
       }
 
-      if (pageItems.length < pageSize) {
+      if (
+        pageItems.length < pageSize ||
+        (collectionTotal !== undefined && offset >= collectionTotal)
+      ) {
         break;
       }
     }

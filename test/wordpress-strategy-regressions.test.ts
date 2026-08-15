@@ -113,6 +113,27 @@ describe('WordPress strategy regressions', () => {
     expect(result.posts).toHaveLength(101);
   });
 
+  it('stops migration when a full page reaches the reported total', async () => {
+    cacheMocks.getLatestLegacySeenAt.mockReturnValue(100);
+    cacheMocks.getSeenPostIds.mockReturnValue(new Set(['legacy-id']));
+    const page = Array.from({ length: 100 }, (_, index) =>
+      createApiItem(200 - index, `new-${200 - index}`),
+    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      // eslint-disable-next-line vitest/prefer-mock-promise-shorthand, vitest/prefer-mock-return-shorthand -- each attempted request needs a fresh response body
+      .mockImplementation(() =>
+        Promise.resolve(
+          Response.json(page, { headers: { 'X-WP-Total': '100' } }),
+        ),
+      );
+
+    const result = await getJobChanges(2);
+
+    expect(result.itemsFound).toBe(100);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it('completes migration when no posts were published after the cutoff', async () => {
     cacheMocks.getLatestLegacySeenAt.mockReturnValue(100);
     cacheMocks.getSeenPostIds.mockReturnValue(new Set(['legacy-id']));

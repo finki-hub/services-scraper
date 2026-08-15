@@ -244,6 +244,33 @@ describe('WordPress strategies', () => {
     expect(result.itemsFound).toBe(100);
   });
 
+  it('stops when a full page reaches the reported collection total', async () => {
+    cacheMocks.getSeenPostIds.mockReturnValue(new Set());
+    const page = Array.from({ length: 100 }, (_, index) =>
+      createApiItem({ id: index }),
+    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      // eslint-disable-next-line vitest/prefer-mock-promise-shorthand, vitest/prefer-mock-return-shorthand -- each attempted request needs a fresh response body
+      .mockImplementation(() =>
+        Promise.resolve(
+          Response.json(page, { headers: { 'X-WP-Total': '100' } }),
+        ),
+      );
+    const { JobsStrategy } = await import('../src/strategies/JobsStrategy.js');
+    const strategy = new JobsStrategy();
+
+    const result = await strategy.getChanges({
+      cookie: undefined,
+      link: 'ignored',
+      maxPosts: 101,
+      scraperId: 'jobs',
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(result.itemsFound).toBe(100);
+  });
+
   it('reports non-success WordPress responses', async () => {
     cacheMocks.getSeenPostIds.mockReturnValue(new Set());
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
