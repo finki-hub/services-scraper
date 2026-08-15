@@ -73,7 +73,7 @@ describe('WordPress strategies', () => {
         cookie: undefined,
         link: 'https://oldsite.invalid/legacy-listing',
         maxPosts: 5,
-        scraperId: collection,
+        scraperId: strategyName,
       });
 
       expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
@@ -84,7 +84,7 @@ describe('WordPress strategies', () => {
 
       result.commit();
 
-      expect(cacheMocks.markPostsSeen).toHaveBeenCalledWith(collection, [
+      expect(cacheMocks.markPostsSeen).toHaveBeenCalledWith(strategyName, [
         `wordpress:${collection}:42`,
       ]);
     },
