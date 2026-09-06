@@ -10,7 +10,6 @@ import { DiplomasStrategy } from '../strategies/DiplomasStrategy.js';
 import { EduPageStrategy } from '../strategies/EduPageStrategy.js';
 import { EventsStrategy } from '../strategies/EventsStrategy.js';
 import { ExampleStrategy } from '../strategies/ExampleStrategy.js';
-import { InternshipsStrategy } from '../strategies/InternshipsStrategy.js';
 import { JobsStrategy } from '../strategies/JobsStrategy.js';
 import { MastersStrategy } from '../strategies/MastersStrategy.js';
 import { PartnersStrategy } from '../strategies/PartnersStrategy.js';
@@ -41,8 +40,6 @@ export const createStrategy = (strategyName: unknown): ScraperStrategy => {
       return new EventsStrategy();
     case Strategy.Example:
       return new ExampleStrategy();
-    case Strategy.Internships:
-      return new InternshipsStrategy();
     case Strategy.Jobs:
       return new JobsStrategy();
     case Strategy.Masters:
