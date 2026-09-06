@@ -176,11 +176,6 @@ describe('createStrategy', () => {
     [Strategy.Diplomas, 'postsSelector', 'div.panel'],
     [Strategy.Events, 'collection', 'event'],
     [Strategy.Example, 'postsSelector', 'Selector for all data containers'],
-    [
-      Strategy.Internships,
-      'postsSelector',
-      'div.container div.row > div.col > div.card',
-    ],
     [Strategy.Jobs, 'collection', 'jobs-and-internships'],
     [Strategy.Masters, 'postsSelector', 'div.row.rounded'],
     [Strategy.Partners, 'postsSelector', 'div.card, div.support'],
@@ -200,15 +195,18 @@ describe('createStrategy', () => {
     },
   );
 
-  it('throws for invalid names', async () => {
-    vi.doMock('../src/configuration/config.js', () => ({
-      getConfigProperty: () => {},
-    }));
+  it.each(['internships', 'missing'])(
+    'throws for invalid name %s',
+    async (strategyName) => {
+      vi.doMock('../src/configuration/config.js', () => ({
+        getConfigProperty: () => {},
+      }));
 
-    const { createStrategy } = await import('../src/utils/strategies.js');
+      const { createStrategy } = await import('../src/utils/strategies.js');
 
-    expect(() => createStrategy('missing')).toThrow(
-      ERROR_MESSAGES.strategyNotFound,
-    );
-  });
+      expect(() => createStrategy(strategyName)).toThrow(
+        ERROR_MESSAGES.strategyNotFound,
+      );
+    },
+  );
 });

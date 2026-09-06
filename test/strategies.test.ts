@@ -175,69 +175,6 @@ describe('TimetablesStrategy', () => {
   });
 });
 
-describe('InternshipsStrategy', () => {
-  it('includes optional company, status, and deadline fields when present', async () => {
-    vi.doMock(configModulePath, () => ({
-      getConfigProperty: () => {},
-    }));
-
-    const { InternshipsStrategy } =
-      await import('../src/strategies/InternshipsStrategy.js');
-    const strategy = new InternshipsStrategy();
-    const $element = loadElement(
-      `
-        <div class="card">
-          <h5 class="card-title">Junior Developer</h5>
-          <p class="card-text">Build student services.</p>
-          <p class="mb-2 text-secondary small"><i class="bi-building"></i><span>FINKI Hub</span></p>
-          <p class="mb-0 text-secondary small"><i class="bi-calendar-x"></i><span><span>Активен до: 31.12.2026</span></span></p>
-          <span class="badge">Active</span>
-          <div class="card-footer"><a class="btn" href="/posting/42">Apply</a></div>
-        </div>
-      `,
-      'div.card',
-    );
-    const post = strategy.getPostData($element);
-    const strings = collectStrings(post.component.toJSON()).join('\n');
-
-    expect(post.id).toBe('https://internships.finki.ukim.mk/posting/42');
-    expect(strings).toContain('Junior Developer');
-    expect(strings).toContain('https://internships.finki.ukim.mk/posting/42');
-    expect(strings).toContain('Build student services.');
-    expect(strings).toContain('**Компанија:** FINKI Hub');
-    expect(strings).toContain('**Статус:** Active');
-    expect(strings).toContain('**Активен до:** 31.12.2026');
-  });
-
-  it('omits optional metadata when it is absent', async () => {
-    vi.doMock(configModulePath, () => ({
-      getConfigProperty: () => {},
-    }));
-
-    const { InternshipsStrategy } =
-      await import('../src/strategies/InternshipsStrategy.js');
-    const strategy = new InternshipsStrategy();
-    const $element = loadElement(
-      `
-        <div class="card">
-          <h5 class="card-title">Internship</h5>
-          <p class="card-text"></p>
-        </div>
-      `,
-      'div.card',
-    );
-    const post = strategy.getPostData($element);
-    const strings = collectStrings(post.component.toJSON()).join('\n');
-
-    expect(post.id).toBeNull();
-    expect(strings).toContain('Internship');
-    expect(strings).toContain('?');
-    expect(strings).not.toContain('**Компанија:**');
-    expect(strings).not.toContain('**Статус:**');
-    expect(strings).not.toContain('**Активен до:**');
-  });
-});
-
 describe('WordPress content strategies', () => {
   it.each([
     {

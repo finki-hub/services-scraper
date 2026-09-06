@@ -22,7 +22,6 @@ export enum Strategy {
   EduPage = 'edupage',
   Events = 'events',
   Example = 'example',
-  Internships = 'internships',
   Jobs = 'jobs',
   Masters = 'masters',
   Partners = 'partners',
