@@ -77,7 +77,7 @@
       "strategy": "partners",
       "link": "https://partneri.finki.ukim.mk/partners",
       "name": "Партнери",
-      "maxPosts": 100,
+      "maxPosts": 200,
       "enabled": true
     },
     "edupage": {

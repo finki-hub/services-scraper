@@ -178,7 +178,11 @@ describe('createStrategy', () => {
     [Strategy.Example, 'postsSelector', 'Selector for all data containers'],
     [Strategy.Jobs, 'collection', 'jobs-and-internships'],
     [Strategy.Masters, 'postsSelector', 'div.row.rounded'],
-    [Strategy.Partners, 'postsSelector', 'div.card, div.support'],
+    [
+      Strategy.Partners,
+      'postsSelector',
+      'div.card, div.support, .view-id-prijateli ul > li',
+    ],
     [Strategy.Projects, 'collection', 'project'],
     [Strategy.Timetables, 'collection', 'schedule'],
   ])(
