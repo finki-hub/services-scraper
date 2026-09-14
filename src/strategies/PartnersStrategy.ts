@@ -38,7 +38,7 @@ const isSupportedByPartner = (url: string): boolean => {
 export class PartnersStrategy extends HtmlStrategy {
   public idsSelector = 'a';
 
-  public postsSelector = 'div.card, div.support';
+  public postsSelector = 'div.card, div.support, .view-id-prijateli ul > li';
 
   public getId($element: Cheerio<Element>): null | string {
     const url = $element.find('a').attr('href')?.trim() ?? null;

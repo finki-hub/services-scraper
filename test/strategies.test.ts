@@ -36,6 +36,55 @@ afterEach(() => {
 });
 
 describe('PartnersStrategy', () => {
+  it('selects linked and text-only partners from the collaborators view', async () => {
+    vi.doMock(configModulePath, () => ({
+      getConfigProperty: () => {},
+    }));
+
+    const { PartnersStrategy } =
+      await import('../src/strategies/PartnersStrategy.js');
+    const strategy = new PartnersStrategy();
+    const $ = cheerio.load(`
+      <div class="view view-prijateli view-id-prijateli view-display-id-page">
+        <h3>Industry Collaborators</h3>
+        <div class="view-content">
+          <ul>
+            <li style="margin-bottom:8px"><a href="http&#58;//digitsoftware.mk">Digit Software</a></li>
+            <li style="margin-bottom:8px"><a href="http&#58;//nexthop.mk">NextHop</a></li>
+            <li style="margin-bottom:8px"><span>Ход Бпо Солутионс</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="unrelated-list"><ul><li>Unrelated item</li></ul></div>
+    `);
+    const $partners = $(strategy.postsSelector);
+
+    expect($partners).toHaveLength(3);
+    expect(
+      $partners.map((_, element) => $(element).text().trim()).toArray(),
+    ).toStrictEqual(['Digit Software', 'NextHop', 'Ход Бпо Солутионс']);
+
+    const linkedPartner = $partners.eq(0) as Cheerio<Element>;
+    const textOnlyPartner = $partners.eq(2) as Cheerio<Element>;
+    const linkedPost = strategy.getPostData(linkedPartner);
+    const textOnlyPost = strategy.getPostData(textOnlyPartner);
+
+    expect(strategy.getId(linkedPartner)).toBe('Digit Software');
+    expect(strategy.getId(textOnlyPartner)).toBe('Ход Бпо Солутионс');
+    expect(linkedPost.id).toBe('Digit Software');
+    expect(linkedPartner.find('a').attr('href')).toBeDefined();
+    expect(collectStrings(linkedPost.component.toJSON()).join('\n')).toContain(
+      'digitsoftware.mk',
+    );
+    expect(
+      collectStrings(textOnlyPost.component.toJSON()).join('\n'),
+    ).not.toContain('http://');
+    expect($(strategy.postsSelector).text()).not.toContain(
+      'Industry Collaborators',
+    );
+    expect($(strategy.postsSelector).text()).not.toContain('Unrelated item');
+  });
+
   it('cleans partner labels and whitespace from text-only partner IDs', async () => {
     vi.doMock(configModulePath, () => ({
       getConfigProperty: () => {},
