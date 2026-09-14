@@ -4,7 +4,16 @@ import type { Element } from 'domhandler';
 import * as cheerio from 'cheerio';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import sampleConfig from '../config/config.sample.json' with { type: 'json' };
+
 const configModulePath = '../src/configuration/config.js';
+const cacheModulePath = '../src/utils/cache.js';
+
+const cacheMocks = {
+  getSeenPostIds: vi.fn<(scraperId: string) => Set<string>>(),
+  markPostsSeen:
+    vi.fn<(scraperId: string, postIds: Array<null | string>) => void>(),
+};
 
 const collectStrings = (value: unknown): string[] => {
   if (typeof value === 'string') {
@@ -32,10 +41,95 @@ const loadElement = (html: string, selector: string): Cheerio<Element> => {
 
 afterEach(() => {
   vi.doUnmock(configModulePath);
+  vi.doUnmock(cacheModulePath);
+  vi.unstubAllGlobals();
+  cacheMocks.getSeenPostIds.mockReset();
+  cacheMocks.markPostsSeen.mockReset();
   vi.resetModules();
 });
 
 describe('PartnersStrategy', () => {
+  it('processes all collaborators after historical entries within the sample cap', async () => {
+    vi.doMock(configModulePath, () => ({
+      getConfigProperty: () => {},
+    }));
+
+    const historicalIds = [
+      'Historical support',
+      ...Array.from(
+        { length: 106 },
+        (_, index) => `Historical card ${index + 1}`,
+      ),
+    ];
+    const collaboratorNames = [
+      'Digit Software',
+      'NextHop',
+      'Ход Бпо Солутионс',
+      ...Array.from({ length: 13 }, (_, index) => `Collaborator ${index + 4}`),
+    ];
+    const historicalEntries = [
+      '<div class="support">Historical support</div>',
+      ...historicalIds.slice(1).map((id) => `<div class="card">${id}</div>`),
+    ].join('');
+    const collaboratorEntries = [
+      '<li style="margin-bottom:8px"><a href="http&#58;//digitsoftware.mk">Digit Software</a></li>',
+      '<li style="margin-bottom:8px"><a href="http&#58;//nexthop.mk">NextHop</a></li>',
+      '<li style="margin-bottom:8px"><span>Ход Бпо Солутионс</span></li>',
+      ...collaboratorNames
+        .slice(3)
+        .map(
+          (name) => `<li style="margin-bottom:8px"><span>${name}</span></li>`,
+        ),
+    ].join('');
+    const html = `
+      ${historicalEntries}
+      <div class="view view-prijateli view-id-prijateli view-display-id-page">
+        <h3>Industry Collaborators</h3>
+        <div class="view-content"><ul>${collaboratorEntries}</ul></div>
+      </div>
+    `;
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(html, { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.doMock(cacheModulePath, () => cacheMocks);
+    cacheMocks.getSeenPostIds.mockReturnValue(new Set(historicalIds));
+
+    const { PartnersStrategy } =
+      await import('../src/strategies/PartnersStrategy.js');
+    const strategy = new PartnersStrategy();
+    const result = await strategy.getChanges({
+      cookie: undefined,
+      link: 'https://partneri.finki.ukim.mk/partners',
+      maxPosts: sampleConfig.scrapers.partners.maxPosts,
+      scraperId: 'partners-test',
+    });
+
+    expect(sampleConfig.scrapers.partners.maxPosts).toBe(200);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(cacheMocks.getSeenPostIds).toHaveBeenCalledWith('partners-test');
+    expect(result.itemsFound).toBe(123);
+    expect(result.posts).toHaveLength(16);
+    expect(new Set(result.posts.map(({ id }) => id))).toStrictEqual(
+      new Set(collaboratorNames),
+    );
+
+    const postStrings = result.posts
+      .flatMap(({ component }) => collectStrings(component.toJSON()))
+      .join('\n');
+
+    expect(postStrings).toContain('digitsoftware.mk');
+    expect(postStrings).toContain('Ход Бпо Солутионс');
+    expect(cacheMocks.markPostsSeen).not.toHaveBeenCalled();
+
+    result.commit();
+
+    expect(cacheMocks.markPostsSeen).toHaveBeenCalledExactlyOnceWith(
+      'partners-test',
+      [...historicalIds, ...collaboratorNames],
+    );
+  });
+
   it('selects linked and text-only partners from the collaborators view', async () => {
     vi.doMock(configModulePath, () => ({
       getConfigProperty: () => {},
