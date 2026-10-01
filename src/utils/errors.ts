@@ -1,4 +1,4 @@
-import { shutdownAnalytics } from './analytics.js';
+import { captureException, shutdownAnalytics } from './analytics.js';
 import { closeCache } from './cache.js';
 import { logger } from './logger.js';
 import { errorWebhook } from './webhooks.js';
@@ -24,32 +24,38 @@ export const registerGlobalErrorHandlers = () => {
   });
 
   process.on('unhandledRejection', async (reason) => {
-    logger.error({ reason }, 'Unhandled Promise Rejection');
+    captureException(reason, {
+      phase: 'unhandled_rejection',
+      reason: 'unexpected_error',
+    });
+    logger.error('Unhandled Promise Rejection');
 
     const msg =
       `❌ **Unhandled Promise Rejection (global)**\n` +
-      `Message: ${reason instanceof Error ? reason.message : String(reason)}\n` +
       `⚠️ **The application will continue running**, but this indicates a bug that should be fixed.`;
 
     try {
       await errorWebhook?.send({ content: msg });
-    } catch (error: unknown) {
-      logger.error({ error }, 'Failed to send rejection to webhook');
+    } catch {
+      logger.error('Failed to send rejection to webhook');
     }
   });
 
   process.on('uncaughtException', async (err) => {
-    logger.error({ err }, 'Uncaught Exception');
+    captureException(err, {
+      phase: 'uncaught_exception',
+      reason: 'unexpected_error',
+    });
+    logger.error('Uncaught Exception');
 
     const msg =
       `🚨 **Uncaught Exception (global)**\n` +
-      `Message: ${err.message}\n` +
       `🛑 **THE APPLICATION WILL NOW EXIT**. This is a critical error that requires immediate attention.`;
 
     try {
       await errorWebhook?.send({ content: msg });
-    } catch (error: unknown) {
-      logger.error({ error }, 'Failed to send exception to webhook');
+    } catch {
+      logger.error('Failed to send exception to webhook');
     }
 
     closeCache();

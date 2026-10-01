@@ -49,6 +49,7 @@ afterEach(async () => {
   state.cacheModule?.closeCache();
   vi.doUnmock('../src/utils/constants.js');
   vi.doUnmock('../src/utils/logger.js');
+  vi.doUnmock('node:sqlite');
   vi.resetModules();
 
   if (state.cachePath !== '') {
@@ -57,6 +58,46 @@ afterEach(async () => {
 });
 
 describe('SQLite seen-post cache', () => {
+  it('logs only a fixed diagnostic on SQLite open failure and preserves the original cause', async () => {
+    const sentinel = 'PRIVATE-SQLITE-SENTINEL';
+    const originalError = new Error(sentinel, { cause: { path: sentinel } });
+    // eslint-disable-next-line unicorn/no-error-property-assignment -- Simulate a driver stack containing a private filesystem path.
+    originalError.stack = `Error: ${sentinel}\n at C:\\private\\${sentinel}`;
+    vi.doMock('node:sqlite', () => ({
+      // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Model failure during the native database constructor.
+      DatabaseSync: class {
+        public constructor() {
+          throw originalError;
+        }
+      },
+    }));
+    const cache = await loadCache();
+    const { logger } = await import('../src/utils/logger.js');
+    let thrown: unknown;
+    try {
+      cache.getSeenPostIds('course');
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toBe(
+      'Failed to open SQLite cache database',
+    );
+    expect((thrown as Error).cause).toBe(originalError);
+    expect(vi.mocked(logger.error).mock.calls).toStrictEqual([
+      [
+        'Failed to open SQLite cache database. Ensure the cache directory is writable.',
+      ],
+    ]);
+    expect(
+      JSON.stringify([
+        vi.mocked(logger.error).mock.calls,
+        vi.mocked(logger.info).mock.calls,
+      ]),
+    ).not.toContain(sentinel);
+  });
+
   it('starts empty for an unseen scraper', async () => {
     const cache = await loadCache();
 

@@ -35,7 +35,6 @@ const initializeDatabase = (): DatabaseSync => {
     connection = new DatabaseSync(DB_PATH);
   } catch (error) {
     logger.error(
-      { error },
       'Failed to open SQLite cache database. Ensure the cache directory is writable.',
     );
     throw new Error('Failed to open SQLite cache database', { cause: error });

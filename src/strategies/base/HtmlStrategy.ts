@@ -59,7 +59,7 @@ export abstract class HtmlStrategy implements ScraperStrategy {
 
       if (data.id === null) {
         logger.error(
-          `[${context.scraperId}] Post ID not found: ${$.html(post).slice(0, 200)}`,
+          `[${context.scraperId}] Post ID not found; skipping malformed post`,
         );
 
         continue;
