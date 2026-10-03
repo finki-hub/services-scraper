@@ -9,6 +9,26 @@ const SERVICE_NAME = 'services-scraper';
 
 const POSTHOG_KEY = process.env['POSTHOG_KEY'] ?? '';
 const POSTHOG_HOST = process.env['POSTHOG_HOST'] ?? 'https://eu.i.posthog.com';
+const revision = process.env['APP_REVISION'] ?? '';
+const revisionPattern = /^[0-9a-f]{40}$/u;
+const APP_REVISION =
+  revision.length === 40 && revisionPattern.test(revision)
+    ? revision
+    : undefined;
+
+const withAppRevision = (
+  properties: Record<string, unknown>,
+): Record<string, unknown> => {
+  const trustedProperties = { ...properties };
+  // eslint-disable-next-line e18e/no-delete-property -- Invalid revisions must be absent, not undefined.
+  delete trustedProperties['app_revision'];
+
+  if (APP_REVISION !== undefined) {
+    trustedProperties['app_revision'] = APP_REVISION;
+  }
+
+  return trustedProperties;
+};
 
 const client =
   POSTHOG_KEY === ''
@@ -85,12 +105,12 @@ export const captureScrapeStarted = (event: ScrapeStartedEvent): void => {
     client?.capture({
       distinctId: SERVICE_NAME,
       event: 'scrape_started',
-      properties: {
+      properties: withAppRevision({
         $process_person_profile: false,
         run_id: event.runId,
         service: SERVICE_NAME,
         source: event.source,
-      },
+      }),
     });
   } catch {}
 };
@@ -100,7 +120,7 @@ export const captureNotificationSent = (event: NotificationSentEvent): void => {
     client?.capture({
       distinctId: SERVICE_NAME,
       event: 'notification_sent',
-      properties: {
+      properties: withAppRevision({
         $process_person_profile: false,
         attempted: event.attempted,
         confirmed_sent: event.confirmedSent,
@@ -112,7 +132,7 @@ export const captureNotificationSent = (event: NotificationSentEvent): void => {
         service: SERVICE_NAME,
         source: event.source,
         success: event.success,
-      },
+      }),
     });
   } catch {}
 };
@@ -122,7 +142,7 @@ export const captureSourceScraped = (event: SourceScrapedEvent): void => {
     client?.capture({
       distinctId: SERVICE_NAME,
       event: 'source_scraped',
-      properties: {
+      properties: withAppRevision({
         $process_person_profile: false,
         duration_ms: event.durationMs,
         records_added: event.recordsAdded,
@@ -131,7 +151,7 @@ export const captureSourceScraped = (event: SourceScrapedEvent): void => {
         service: SERVICE_NAME,
         source: event.source,
         success: event.success,
-      },
+      }),
     });
   } catch {}
 };
@@ -141,7 +161,7 @@ export const captureScrapeRun = (event: ScrapeRunEvent): void => {
     client?.capture({
       distinctId: SERVICE_NAME,
       event: 'scrape_run',
-      properties: {
+      properties: withAppRevision({
         $process_person_profile: false,
         attempted: event.attempted,
         confirmed_sent: event.confirmedSent,
@@ -157,7 +177,7 @@ export const captureScrapeRun = (event: ScrapeRunEvent): void => {
         service: SERVICE_NAME,
         source: event.source,
         status: event.status,
-      },
+      }),
     });
   } catch {}
 };
@@ -176,15 +196,19 @@ export const captureException = (
     const safeError = new Error(category);
     // eslint-disable-next-line e18e/no-delete-property -- Explicitly omit stack from the SDK input.
     delete safeError.stack;
-    client?.captureException(safeError, SERVICE_NAME, {
-      $process_person_profile: false,
-      category,
-      phase: properties.phase,
-      reason: properties.reason,
-      run_id: properties.runId,
-      service: SERVICE_NAME,
-      source: properties.source,
-    });
+    client?.captureException(
+      safeError,
+      SERVICE_NAME,
+      withAppRevision({
+        $process_person_profile: false,
+        category,
+        phase: properties.phase,
+        reason: properties.reason,
+        run_id: properties.runId,
+        service: SERVICE_NAME,
+        source: properties.source,
+      }),
+    );
   } catch {}
 };
 
