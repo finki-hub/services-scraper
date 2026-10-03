@@ -204,7 +204,10 @@ test.each([
       },
     );
     expect(captureException.mock.calls[0]?.[0]).not.toBe(error);
-    expect(captureException.mock.calls[0]?.[0]).not.toHaveProperty('stack');
+    expect(captureException.mock.calls[0]?.[0]).toHaveProperty(
+      'stack',
+      'Error: error',
+    );
     expect(captureException.mock.calls[0]?.[0]).toHaveProperty(
       'message',
       'error',
@@ -238,7 +241,10 @@ test.each(['f'.repeat(40), undefined])(
       },
     );
     expect(captureException.mock.calls[0]?.[0]).not.toBe(error);
-    expect(captureException.mock.calls[0]?.[0]).not.toHaveProperty('stack');
+    expect(captureException.mock.calls[0]?.[0]).toHaveProperty(
+      'stack',
+      'Error: error',
+    );
     expect(captureException.mock.calls[0]?.[0]).toHaveProperty(
       'message',
       'error',

@@ -694,7 +694,7 @@ test('exception projection ignores arbitrary properties and hostile thrown value
 
   for (const [error, distinctId, metadata] of fixture.exceptions.mock.calls) {
     expect(error).toBeInstanceOf(Error);
-    expect((error as Error).stack).toBeUndefined();
+    expect((error as Error).stack).toBe('Error: unknown');
     expect(metadata).toMatchObject({
       category: 'unknown',
       phase: 'fetch',

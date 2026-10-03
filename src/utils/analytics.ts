@@ -194,8 +194,10 @@ export const captureException = (
   try {
     const category = errorCategory(error);
     const safeError = new Error(category);
-    // eslint-disable-next-line e18e/no-delete-property -- Explicitly omit stack from the SDK input.
-    delete safeError.stack;
+    // A header without frames prevents the SDK from synthesizing a capture-site
+    // stack (and enriching it with source context) for a missing or empty stack.
+    // eslint-disable-next-line unicorn/no-error-property-assignment -- Intentionally replace all frames with a categorical header.
+    safeError.stack = `Error: ${category}`;
     client?.captureException(
       safeError,
       SERVICE_NAME,
