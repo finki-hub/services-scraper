@@ -2,6 +2,7 @@ import { setTimeout } from 'node:timers/promises';
 
 import type { Scraper } from './Scraper.js';
 
+import { captureException } from './utils/analytics.js';
 import { LOG_MESSAGES } from './utils/constants.js';
 import { registerGlobalErrorHandlers } from './utils/errors.js';
 import { logger } from './utils/logger.js';
@@ -16,8 +17,12 @@ const runScraperWithRecovery = async (scraper: Scraper): Promise<void> => {
       );
       await setTimeout(10_000);
     } catch (error) {
+      captureException(error, {
+        phase: 'recovery',
+        reason: 'unexpected_error',
+        source: scraper.name,
+      });
       logger.error(
-        { error },
         `[${scraper.name}] Scraper crashed. Restarting in 10 seconds...`,
       );
       await setTimeout(10_000);

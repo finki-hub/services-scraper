@@ -1,11 +1,11 @@
 import {
   type APIMessageTopLevelComponent,
-  codeBlock,
   type JSONEncodable,
   MessageFlagsBitField,
   WebhookClient,
 } from 'discord.js';
 import { isCookieHeaderValid } from 'finki-auth';
+import { randomUUID } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
 import { type Logger } from 'pino';
 
@@ -21,11 +21,12 @@ import {
   captureScrapeRun,
   captureScrapeStarted,
   captureSourceScraped,
+  type ScrapeRunEvent,
 } from './utils/analytics.js';
-import { createMentionComponent, truncateString } from './utils/components.js';
+import { createMentionComponent } from './utils/components.js';
 import { ERROR_MESSAGES, LOG_MESSAGES } from './utils/constants.js';
-import { extractErrorCauses } from './utils/error-causes.js';
 import { logger } from './utils/logger.js';
+import { errorCategory } from './utils/safe-error.js';
 import { createStrategy } from './utils/strategies.js';
 import { errorWebhook } from './utils/webhooks.js';
 
@@ -72,45 +73,55 @@ export class Scraper {
 
   public async run(): Promise<void> {
     while (true) {
+      const start = performance.now();
+      const run: ScrapeRunEvent = {
+        attempted: 0,
+        confirmedSent: 0,
+        failedAttempted: 0,
+        itemsFound: null,
+        itemsNew: null,
+        ms: 0,
+        notAttempted: null,
+        outcome: 'failed',
+        phase: 'cookie_validation',
+        reason: 'completed',
+        runId: randomUUID(),
+        source: this.scraperName,
+        status: 'success',
+      };
       this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.searching}`);
-      captureScrapeStarted({ source: this.scraperName });
+      captureScrapeStarted({ runId: run.runId, source: this.scraperName });
 
       try {
         await this.validateCookie();
+        await this.getAndSendPosts(run);
       } catch (error) {
-        await this.handleError(error, 'while validating cookie', this.cookie);
-        this.cookie = undefined;
-        await Scraper.sleep(getConfigProperty('errorDelay'));
-
-        continue;
+        run.status = 'error';
+        run.outcome = 'failed';
+        if (run.reason !== 'missing_webhook') {
+          const reasons = {
+            /* eslint-disable camelcase -- Fixed telemetry phase names. */
+            commit: 'commit_error',
+            cookie_acquisition: 'cookie_acquisition_error',
+            cookie_validation: 'cookie_validation_error',
+            delivery: 'delivery_error',
+            fetch: 'fetch_error',
+            /* eslint-enable camelcase -- Fixed telemetry phase names. */
+          } as const;
+          run.reason = reasons[run.phase];
+        }
+        if (run.phase === 'cookie_validation') this.cookie = undefined;
+        await this.handleError(error, run);
+      } finally {
+        run.ms = Math.round(performance.now() - start);
+        captureScrapeRun(run);
       }
 
-      const start = performance.now();
-
-      try {
-        const { itemsFound, itemsNew } = await this.getAndSendPosts();
-        captureScrapeRun({
-          itemsFound,
-          itemsNew,
-          ms: Math.round(performance.now() - start),
-          source: this.scraperName,
-          status: 'success',
-        });
-      } catch (error) {
-        captureScrapeRun({
-          itemsFound: 0,
-          itemsNew: 0,
-          ms: Math.round(performance.now() - start),
-          source: this.scraperName,
-          status: 'error',
-        });
-        await this.handleError(error, 'while fetching and sending posts');
-        await Scraper.sleep(getConfigProperty('errorDelay'));
-
-        continue;
-      }
-
-      await Scraper.sleep(getConfigProperty('successDelay'));
+      await Scraper.sleep(
+        getConfigProperty(
+          run.status === 'error' ? 'errorDelay' : 'successDelay',
+        ),
+      );
     }
   }
 
@@ -136,19 +147,14 @@ export class Scraper {
     }
   }
 
-  private async getAndSendPosts(): Promise<{
-    itemsFound: number;
-    itemsNew: number;
-  }> {
+  private async getAndSendPosts(run: ScrapeRunEvent): Promise<void> {
+    run.phase = 'cookie_acquisition';
     if (this.cookie === undefined && this.strategy.getCookie !== undefined) {
-      try {
-        this.cookie = await this.strategy.getCookie();
-        logger.info(`[${this.scraperName}] ${LOG_MESSAGES.fetchedCookie}`);
-      } catch (error) {
-        throw new Error('Failed to fetch cookie', { cause: error });
-      }
+      this.cookie = await this.strategy.getCookie();
+      logger.info(`[${this.scraperName}] ${LOG_MESSAGES.fetchedCookie}`);
     }
 
+    run.phase = 'fetch';
     const maxPosts =
       this.scraperConfig.maxPosts ?? getConfigProperty('maxPosts');
 
@@ -167,6 +173,7 @@ export class Scraper {
         durationMs: Math.round(performance.now() - scrapeStart),
         recordsAdded: null,
         recordsTotal: null,
+        runId: run.runId,
         source: this.scraperName,
         success: false,
       });
@@ -179,42 +186,62 @@ export class Scraper {
       durationMs: Math.round(performance.now() - scrapeStart),
       recordsAdded: posts.length,
       recordsTotal: itemsFound ?? posts.length,
+      runId: run.runId,
       source: this.scraperName,
       success: true,
     });
 
-    const summary = {
-      itemsFound: itemsFound ?? posts.length,
-      itemsNew: posts.length,
-    };
+    run.itemsFound = itemsFound ?? posts.length;
+    run.itemsNew = posts.length;
+    run.notAttempted = posts.length;
 
     if (posts.length === 0) {
       this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.noNewPosts}`);
+      run.outcome = 'empty';
+      run.reason = 'empty';
+      run.phase = 'commit';
       commit();
-
-      return summary;
-    }
-
-    for (const post of posts) {
-      this.logger.info(
-        `[${this.scraperName}] ${LOG_MESSAGES.postSent}: ${post.id ?? 'unknown'}`,
-      );
+      return;
     }
 
     const sendPosts = getConfigProperty('sendPosts');
 
     if (sendPosts) {
+      run.phase = 'delivery';
       try {
-        await this.sendBatch(posts.map((post) => post.component));
+        if (this.webhook === undefined) {
+          run.reason = 'missing_webhook';
+          throw new Error('missing_webhook');
+        }
+        await this.sendBatch(
+          posts.map((post) => post.component),
+          this.webhook,
+          run,
+        );
         captureNotificationSent({
+          attempted: run.attempted,
+          confirmedSent: run.confirmedSent,
           count: posts.length,
+          failedAttempted: run.failedAttempted,
+          notAttempted: run.notAttempted,
+          reason: 'completed',
+          runId: run.runId,
           source: this.scraperName,
           success: true,
         });
         logger.info(`[${this.scraperName}] ${LOG_MESSAGES.sentNewPosts}`);
       } catch (error) {
         captureNotificationSent({
-          count: posts.length,
+          attempted: run.attempted,
+          confirmedSent: run.confirmedSent,
+          count: run.confirmedSent,
+          failedAttempted: run.failedAttempted,
+          notAttempted: run.notAttempted,
+          reason:
+            run.reason === 'missing_webhook'
+              ? 'missing_webhook'
+              : 'delivery_error',
+          runId: run.runId,
           source: this.scraperName,
           success: false,
         });
@@ -222,80 +249,48 @@ export class Scraper {
       }
     }
 
+    run.outcome = sendPosts ? 'delivered' : 'disabled';
+    run.reason = sendPosts ? 'completed' : 'disabled';
+    run.phase = 'commit';
     commit();
-
-    return summary;
   }
 
   private async handleError(
     error: unknown,
-    context?: string,
-    code?: string,
+    run: ScrapeRunEvent,
   ): Promise<void> {
     captureException(error, {
-      context,
-      scraper: this.scraperName,
+      phase: run.phase,
+      reason: run.reason,
+      runId: run.runId,
+      source: this.scraperName,
     });
-
-    let errorMessage: string;
-    let stackTrace: string | undefined;
-
-    if (Error.isError(error)) {
-      errorMessage = error.message;
-      stackTrace = error.stack;
-    } else if (typeof error === 'string') {
-      errorMessage = error;
-    } else {
-      try {
-        errorMessage = JSON.stringify(error);
-      } catch {
-        errorMessage = String(error);
-      }
-    }
-
-    const causes = extractErrorCauses(error);
-    const causesString = causes.length > 0 ? causes.join(' <- ') : null;
-    const sourceUrl = this.scraperConfig.link;
-
-    this.logger.error(
-      `[${this.scraperName}] ${context ?? ''} ${sourceUrl} ${errorMessage}`,
-    );
-
-    if (causesString !== null) {
-      this.logger.error(`Cause: ${causesString}`);
-    }
-
-    if (code) {
-      this.logger.error(code);
-    }
-
-    if (stackTrace) {
-      this.logger.error(stackTrace);
-    }
-
+    const category = errorCategory(error);
     const webhookMessage = [
       `❌ Error in **${this.scraperName}**`,
-      context ? `Context: ${context}` : null,
-      `Source: ${sourceUrl}`,
-      `Message: ${errorMessage}`,
-      causesString ? `Cause: ${causesString}` : null,
-      code ? codeBlock(truncateString(code, 1_000)) : null,
-    ]
-      .filter(Boolean)
-      .join('\n');
+      `Run: ${run.runId}`,
+      `Phase: ${run.phase}`,
+      `Reason: ${run.reason}`,
+      `Category: ${category}`,
+    ].join('\n');
+    this.logger.error(webhookMessage);
 
     try {
       await (errorWebhook ?? this.webhook)?.send({
         content: webhookMessage,
         username: this.scraperConfig.name ?? this.scraperName,
       });
-    } catch (error_) {
-      this.logger.error(`Failed to send error to webhook: ${error_}`);
+    } catch {
+      this.logger.error(
+        `[${this.scraperName}] Run: ${run.runId} Failed to send error to webhook`,
+      );
     }
   }
 
   private async sendBatch(
     components: Array<JSONEncodable<APIMessageTopLevelComponent>>,
+    webhook: WebhookClient,
+    run: ScrapeRunEvent,
   ): Promise<void> {
     if (components.length === 0) {
       return;
@@ -318,18 +313,19 @@ export class Scraper {
         : chunk;
 
       try {
-        await this.webhook?.send({
+        run.attempted += chunk.length;
+        run.notAttempted = components.length - run.attempted;
+        await webhook.send({
           components: messageComponents,
           flags: MessageFlagsBitField.Flags.IsComponentsV2,
           username: this.scraperConfig.name ?? this.scraperName,
           withComponents: true,
         });
+        run.confirmedSent += chunk.length;
       } catch (error) {
-        await this.handleError(
-          error,
-          `while sending batch of ${chunk.length} posts`,
-        );
-
+        // A rejected send means no confirmed acknowledgement, not proof of
+        // non-delivery. Retrying the uncommitted run can duplicate earlier chunks.
+        run.failedAttempted += chunk.length;
         throw error;
       }
     }

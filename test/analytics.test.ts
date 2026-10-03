@@ -5,6 +5,25 @@ import type * as Analytics from '../src/utils/analytics.js';
 
 const revision = '0123456789abcdef0123456789abcdef01234567';
 const service = 'services-scraper';
+const runId = 'a32138bd-fd43-4974-a610-6c2673c5e4ae';
+const exceptionProperties = {
+  phase: 'fetch',
+  reason: 'fetch_error',
+  runId,
+  source: 'announcements',
+} as const;
+const deliveryCounts = {
+  attempted: 2,
+  confirmedSent: 2,
+  failedAttempted: 0,
+  notAttempted: 0,
+};
+const wireCounts = {
+  attempted: 2,
+  confirmed_sent: 2,
+  failed_attempted: 0,
+  not_attempted: 0,
+};
 const capture = vi.fn<(...args: unknown[]) => void>();
 const captureException = vi.fn<(...args: unknown[]) => void>();
 const shutdown = vi.fn<() => Promise<void>>();
@@ -41,11 +60,17 @@ afterEach(() => {
 });
 
 const emitEvents = (analytics: typeof Analytics): void => {
-  const callerProperties = { app_revision: 'spoofed', source: 'announcements' };
+  const callerProperties = {
+    app_revision: 'spoofed',
+    runId,
+    source: 'announcements',
+  };
   analytics.captureScrapeStarted(callerProperties);
   analytics.captureNotificationSent({
     ...callerProperties,
+    ...deliveryCounts,
     count: 2,
+    reason: 'completed',
     source: 'announcements',
     success: true,
   });
@@ -59,9 +84,13 @@ const emitEvents = (analytics: typeof Analytics): void => {
   });
   analytics.captureScrapeRun({
     ...callerProperties,
+    ...deliveryCounts,
     itemsFound: 5,
     itemsNew: 2,
     ms: 20,
+    outcome: 'delivered',
+    phase: 'commit',
+    reason: 'completed',
     source: 'announcements',
     status: 'success',
   });
@@ -73,7 +102,9 @@ test('adds the startup revision to every existing event without changing operati
   emitEvents(analytics);
 
   const common = {
+    $process_person_profile: false,
     app_revision: revision,
+    run_id: runId,
     service,
     source: 'announcements',
   };
@@ -90,7 +121,13 @@ test('adds the startup revision to every existing event without changing operati
       {
         distinctId: service,
         event: 'notification_sent',
-        properties: { ...common, count: 2, success: true },
+        properties: {
+          ...common,
+          ...wireCounts,
+          count: 2,
+          reason: 'completed',
+          success: true,
+        },
       },
     ],
     [
@@ -112,9 +149,13 @@ test('adds the startup revision to every existing event without changing operati
         event: 'scrape_run',
         properties: {
           ...common,
+          ...wireCounts,
           items_found: 5,
           items_new: 2,
           ms: 20,
+          outcome: 'delivered',
+          phase: 'commit',
+          reason: 'completed',
           status: 'success',
         },
       },
@@ -143,15 +184,34 @@ test.each([
       expect(event).not.toHaveProperty('properties.app_revision');
     }
     const error = new Error('synthetic');
-    analytics.captureException(error, {
+    const properties = {
+      ...exceptionProperties,
       app_revision: revision,
-      scraper: 'announcements',
-    });
+    };
+    analytics.captureException(error, properties);
 
-    expect(captureException).toHaveBeenCalledExactlyOnceWith(error, service, {
-      scraper: 'announcements',
+    expect(captureException).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Error),
       service,
-    });
+      {
+        $process_person_profile: false,
+        category: 'error',
+        phase: 'fetch',
+        reason: 'fetch_error',
+        run_id: runId,
+        service,
+        source: 'announcements',
+      },
+    );
+    expect(captureException.mock.calls[0]?.[0]).not.toBe(error);
+    expect(captureException.mock.calls[0]?.[0]).toHaveProperty(
+      'stack',
+      'Error: error',
+    );
+    expect(captureException.mock.calls[0]?.[0]).toHaveProperty(
+      'message',
+      'error',
+    );
   },
 );
 
@@ -161,17 +221,34 @@ test.each(['f'.repeat(40), undefined])(
     const analytics = await import('../src/utils/analytics.js');
     const error = new Error('synthetic');
     const properties = {
+      ...exceptionProperties,
       app_revision: value,
-      context: 'while fetching',
-      scraper: 'announcements',
     };
     analytics.captureException(error, properties);
 
-    expect(captureException).toHaveBeenCalledExactlyOnceWith(error, service, {
-      ...properties,
-      app_revision: revision,
+    expect(captureException).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Error),
       service,
-    });
+      {
+        $process_person_profile: false,
+        app_revision: revision,
+        category: 'error',
+        phase: 'fetch',
+        reason: 'fetch_error',
+        run_id: runId,
+        service,
+        source: 'announcements',
+      },
+    );
+    expect(captureException.mock.calls[0]?.[0]).not.toBe(error);
+    expect(captureException.mock.calls[0]?.[0]).toHaveProperty(
+      'stack',
+      'Error: error',
+    );
+    expect(captureException.mock.calls[0]?.[0]).toHaveProperty(
+      'message',
+      'error',
+    );
     expect(properties.app_revision).toBe(value);
   },
 );
@@ -184,7 +261,7 @@ test('missing key disables all captures and shutdown', async () => {
     emitEvents(analytics);
   }).not.toThrow();
   expect(() => {
-    analytics.captureException(new Error('synthetic'));
+    analytics.captureException(new Error('synthetic'), exceptionProperties);
   }).not.toThrow();
 
   await analytics.shutdownAnalytics();
@@ -210,13 +287,12 @@ test('SDK capture and shutdown failures remain fail-open', async () => {
     emitEvents(analytics);
   }).not.toThrow();
   expect(() => {
-    analytics.captureException(error);
+    analytics.captureException(error, exceptionProperties);
   }).not.toThrow();
   await expect(analytics.shutdownAnalytics()).resolves.toBeUndefined();
   expect(capture).toHaveBeenCalledTimes(4);
   expect(captureException).toHaveBeenCalledOnce();
   expect(loggerError).toHaveBeenCalledExactlyOnceWith(
-    { error },
     'Failed to flush PostHog analytics',
   );
 });

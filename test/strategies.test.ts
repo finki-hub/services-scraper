@@ -2,7 +2,9 @@ import type { Cheerio, CheerioAPI } from 'cheerio';
 import type { Element } from 'domhandler';
 
 import * as cheerio from 'cheerio';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, test, vi } from 'vitest';
+
+import type { PostData } from '../src/lib/Post.js';
 
 import sampleConfig from '../config/config.sample.json' with { type: 'json' };
 
@@ -42,10 +44,74 @@ const loadElement = (html: string, selector: string): Cheerio<Element> => {
 afterEach(() => {
   vi.doUnmock(configModulePath);
   vi.doUnmock(cacheModulePath);
+  vi.doUnmock('../src/utils/logger.js');
   vi.unstubAllGlobals();
   cacheMocks.getSeenPostIds.mockReset();
   cacheMocks.markPostsSeen.mockReset();
   vi.resetModules();
+});
+
+test('skips ID-less authenticated HTML without logging private content or changing checkpoint timing', async () => {
+  const privateText = 'PRIVATE-SENTINEL & <authenticated>';
+  const encodedText = 'PRIVATE-SENTINEL &amp; &lt;authenticated&gt;';
+  const log = vi.fn<(...args: unknown[]) => void>();
+  vi.doMock('../src/utils/logger.js', () => ({
+    logger: { error: log, info: log },
+  }));
+  vi.doMock(configModulePath, () => ({ getConfigProperty: () => {} }));
+  vi.doMock(cacheModulePath, () => cacheMocks);
+  cacheMocks.getSeenPostIds.mockReturnValue(new Set());
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(
+          `<article data-private="${encodedText}"><a href="https://private.example.test/${encodeURIComponent(privateText)}">${encodedText}</a></article><article id="valid-post">Public post</article>`,
+          { status: 200 },
+        ),
+      ),
+  );
+  const { HtmlStrategy } =
+    await import('../src/strategies/base/HtmlStrategy.js');
+  class TestStrategy extends HtmlStrategy {
+    public postsSelector = 'article';
+    public getId(element: Cheerio<Element>): null | string {
+      return element.attr('id') ?? null;
+    }
+    public getPostData(element: Cheerio<Element>): PostData {
+      return {
+        component: { toJSON: () => ({ components: [], type: 17 }) },
+        id: this.getId(element),
+      };
+    }
+  }
+  const result = await new TestStrategy().getChanges({
+    cookie: 'fake-cookie',
+    link: 'https://example.test/posts',
+    maxPosts: 10,
+    scraperId: 'course',
+  });
+
+  expect(result.itemsFound).toBe(2);
+  expect(result.posts.map(({ id }) => id)).toStrictEqual(['valid-post']);
+  expect(log.mock.calls).toStrictEqual([
+    ['[course] Post ID not found; skipping malformed post'],
+  ]);
+
+  const logged = JSON.stringify(log.mock.calls);
+
+  expect(logged).not.toContain(privateText);
+  expect(logged).not.toContain(encodedText);
+  expect(logged).not.toContain(encodeURIComponent(privateText));
+  expect(cacheMocks.markPostsSeen).not.toHaveBeenCalled();
+
+  result.commit();
+
+  expect(cacheMocks.markPostsSeen).toHaveBeenCalledExactlyOnceWith('course', [
+    null,
+    'valid-post',
+  ]);
 });
 
 describe('PartnersStrategy', () => {
