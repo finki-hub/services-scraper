@@ -7,6 +7,26 @@ const SERVICE_NAME = 'services-scraper';
 
 const POSTHOG_KEY = process.env['POSTHOG_KEY'] ?? '';
 const POSTHOG_HOST = process.env['POSTHOG_HOST'] ?? 'https://eu.i.posthog.com';
+const revision = process.env['APP_REVISION'] ?? '';
+const revisionPattern = /^[0-9a-f]{40}$/u;
+const APP_REVISION =
+  revision.length === 40 && revisionPattern.test(revision)
+    ? revision
+    : undefined;
+
+const withAppRevision = (
+  properties: Record<string, unknown>,
+): Record<string, unknown> => {
+  const trustedProperties = { ...properties };
+  // eslint-disable-next-line e18e/no-delete-property -- Invalid revisions must be absent, not undefined.
+  delete trustedProperties['app_revision'];
+
+  if (APP_REVISION !== undefined) {
+    trustedProperties['app_revision'] = APP_REVISION;
+  }
+
+  return trustedProperties;
+};
 
 const client =
   POSTHOG_KEY === ''
@@ -52,10 +72,10 @@ export const captureScrapeStarted = (event: ScrapeStartedEvent): void => {
     client?.capture({
       distinctId: SERVICE_NAME,
       event: 'scrape_started',
-      properties: {
+      properties: withAppRevision({
         service: SERVICE_NAME,
         source: event.source,
-      },
+      }),
     });
   } catch {}
 };
@@ -65,12 +85,12 @@ export const captureNotificationSent = (event: NotificationSentEvent): void => {
     client?.capture({
       distinctId: SERVICE_NAME,
       event: 'notification_sent',
-      properties: {
+      properties: withAppRevision({
         count: event.count,
         service: SERVICE_NAME,
         source: event.source,
         success: event.success,
-      },
+      }),
     });
   } catch {}
 };
@@ -80,7 +100,7 @@ export const captureSourceScraped = (event: SourceScrapedEvent): void => {
     client?.capture({
       distinctId: SERVICE_NAME,
       event: 'source_scraped',
-      properties: {
+      properties: withAppRevision({
         /* eslint-disable camelcase -- PostHog event properties use snake_case */
         duration_ms: event.durationMs,
         records_added: event.recordsAdded,
@@ -89,7 +109,7 @@ export const captureSourceScraped = (event: SourceScrapedEvent): void => {
         service: SERVICE_NAME,
         source: event.source,
         success: event.success,
-      },
+      }),
     });
   } catch {}
 };
@@ -99,7 +119,7 @@ export const captureScrapeRun = (event: ScrapeRunEvent): void => {
     client?.capture({
       distinctId: SERVICE_NAME,
       event: 'scrape_run',
-      properties: {
+      properties: withAppRevision({
         /* eslint-disable camelcase -- PostHog event properties use snake_case */
         items_found: event.itemsFound,
         items_new: event.itemsNew,
@@ -108,7 +128,7 @@ export const captureScrapeRun = (event: ScrapeRunEvent): void => {
         service: SERVICE_NAME,
         source: event.source,
         status: event.status,
-      },
+      }),
     });
   } catch {}
 };
@@ -118,10 +138,14 @@ export const captureException = (
   properties?: Record<string, unknown>,
 ): void => {
   try {
-    client?.captureException(error, SERVICE_NAME, {
-      service: SERVICE_NAME,
-      ...properties,
-    });
+    client?.captureException(
+      error,
+      SERVICE_NAME,
+      withAppRevision({
+        service: SERVICE_NAME,
+        ...properties,
+      }),
+    );
   } catch {}
 };
 
