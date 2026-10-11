@@ -197,12 +197,12 @@ describe('EduPageStrategy', () => {
     );
   });
 
-  it('notifies deactivation when the active timetable remains listed', async () => {
+  it('keeps deactivation silent when the active timetable remains listed', async () => {
     mockSnapshots(makeListingSnapshot('28', ['28']), { 'cards:': '[]' });
 
     const result = await runStrategy('', ['28']);
 
-    expect(result.posts.map(({ id }) => id)).toStrictEqual(['inactive-tt:28']);
+    expect(result.posts).toStrictEqual([]);
   });
 
   it('does not repeat a listing change after the returned commit', async () => {
@@ -312,7 +312,7 @@ describe('EduPageStrategy', () => {
     );
   });
 
-  it('notifies when the active timetable is deactivated', async () => {
+  it('silently persists deactivation when the timetable remains listed', async () => {
     cacheMocks.getSnapshot.mockImplementation((_scraperId, key) => {
       if (key === 'listing') {
         return JSON.stringify({ defaultNum: '28', ttNums: ['28'] });
@@ -320,21 +320,19 @@ describe('EduPageStrategy', () => {
 
       return key === 'cards:' ? '[]' : undefined;
     });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<typeof fetch>().mockResolvedValue(
-        Response.json({
-          r: {
-            regular: {
-              // eslint-disable-next-line camelcase -- EduPage API field name
-              default_num: '',
-              // eslint-disable-next-line camelcase -- EduPage API field name
-              timetables: [{ datefrom: '2026-02-23', tt_num: '28' }],
-            },
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        r: {
+          regular: {
+            // eslint-disable-next-line camelcase -- EduPage API field name
+            default_num: '',
+            // eslint-disable-next-line camelcase -- EduPage API field name
+            timetables: [{ datefrom: '2026-02-23', tt_num: '28' }],
           },
-        }),
-      ),
+        },
+      }),
     );
+    vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('Temporal', {
       Now: { plainDateISO: () => ({ month: 8, year: 2_026 }) },
     });
@@ -347,15 +345,21 @@ describe('EduPageStrategy', () => {
       scraperId: SCRAPER_ID,
     });
 
-    expect(result.posts.map(({ id }) => id)).toStrictEqual(['inactive-tt:28']);
+    expect(result.posts).toStrictEqual([]);
     expect(cacheMocks.setSnapshot).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledOnce();
 
     result.commit();
 
     expect(cacheMocks.setSnapshot).toHaveBeenCalledWith(
       SCRAPER_ID,
-      'listing',
+      LISTING_KEY,
       JSON.stringify({ defaultNum: '', ttNums: ['28'] }),
+    );
+    expect(cacheMocks.setSnapshot).toHaveBeenCalledWith(
+      SCRAPER_ID,
+      'cards:',
+      '[]',
     );
   });
 });

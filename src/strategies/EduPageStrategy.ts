@@ -489,10 +489,6 @@ export class EduPageStrategy implements ScraperStrategy {
         ),
       );
 
-    const currentTtNums = new Set(timetables.map(({ tt_num: ttNum }) => ttNum));
-    const removedTtNums = previousSnapshot.ttNums.filter(
-      (ttNum) => !currentTtNums.has(ttNum),
-    );
     const posts = [...timetablePosts];
 
     if (defaultNum === previousSnapshot.defaultNum) {
@@ -514,21 +510,6 @@ export class EduPageStrategy implements ScraperStrategy {
           'Нов активен распоред',
           `default-tt:${activeTimetable.tt_num}`,
           activeTimetable,
-        ),
-      );
-    } else if (
-      previousSnapshot.defaultNum !== '' &&
-      !removedTtNums.includes(previousSnapshot.defaultNum)
-    ) {
-      posts.push(
-        this.createTimetablePost(
-          'Нема активен распоред',
-          `inactive-tt:${previousSnapshot.defaultNum}`,
-          {
-            name: previousSnapshot.defaultNum,
-            // eslint-disable-next-line camelcase -- EduPage API field name
-            tt_num: previousSnapshot.defaultNum,
-          },
         ),
       );
     }
