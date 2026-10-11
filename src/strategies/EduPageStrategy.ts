@@ -292,7 +292,7 @@ export class EduPageStrategy implements ScraperStrategy {
       setSnapshot(scraperId, cardsKey, JSON.stringify(currentCards));
     };
 
-    if (previousListingSnapshot === undefined || previousCards === undefined) {
+    if (previousListingSnapshot === undefined) {
       commit();
 
       return { commit: () => {}, posts: [] };
@@ -304,22 +304,17 @@ export class EduPageStrategy implements ScraperStrategy {
         currentListingSnapshot.defaultNum,
         previousListingSnapshot,
       ),
-      ...this.getCardChanges(
+      ...(previousCards === undefined ||
+      !previousListingSnapshot.ttNums.includes(
         currentListingSnapshot.defaultNum,
-        previousCards,
-        currentCards,
-      ),
+      )
+        ? []
+        : this.getCardChanges(
+            currentListingSnapshot.defaultNum,
+            previousCards,
+            currentCards,
+          )),
     ];
-
-    if (
-      posts.length === 0 &&
-      currentListingSnapshot.defaultNum === '' &&
-      previousListingSnapshot.defaultNum !== ''
-    ) {
-      commit();
-
-      return { commit: () => {}, posts };
-    }
 
     return { commit, posts };
   }
@@ -494,24 +489,32 @@ export class EduPageStrategy implements ScraperStrategy {
         ),
       );
 
+    const posts = [...timetablePosts];
+
     if (defaultNum === previousSnapshot.defaultNum) {
-      return timetablePosts;
+      return posts;
     }
 
     const defaultTimetable = timetables.find(
       ({ tt_num: ttNum }) => ttNum === defaultNum,
     );
 
-    return defaultTimetable === undefined
-      ? timetablePosts
-      : [
-          ...timetablePosts,
-          this.createTimetablePost(
-            'Нов активен распоред',
-            `default-tt:${defaultTimetable.tt_num}`,
-            defaultTimetable,
-          ),
-        ];
+    if (defaultTimetable !== undefined || defaultNum !== '') {
+      const activeTimetable = defaultTimetable ?? {
+        name: defaultNum,
+        // eslint-disable-next-line camelcase -- EduPage API field name
+        tt_num: defaultNum,
+      };
+      posts.push(
+        this.createTimetablePost(
+          'Нов активен распоред',
+          `default-tt:${activeTimetable.tt_num}`,
+          activeTimetable,
+        ),
+      );
+    }
+
+    return posts;
   }
 
   private resolveCards(timetable: TimetableResponse): ResolvedCard[] {
