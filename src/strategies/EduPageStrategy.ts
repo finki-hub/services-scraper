@@ -292,7 +292,7 @@ export class EduPageStrategy implements ScraperStrategy {
       setSnapshot(scraperId, cardsKey, JSON.stringify(currentCards));
     };
 
-    if (previousListingSnapshot === undefined || previousCards === undefined) {
+    if (previousListingSnapshot === undefined) {
       commit();
 
       return { commit: () => {}, posts: [] };
@@ -304,11 +304,16 @@ export class EduPageStrategy implements ScraperStrategy {
         currentListingSnapshot.defaultNum,
         previousListingSnapshot,
       ),
-      ...this.getCardChanges(
+      ...(previousCards === undefined ||
+      !previousListingSnapshot.ttNums.includes(
         currentListingSnapshot.defaultNum,
-        previousCards,
-        currentCards,
-      ),
+      )
+        ? []
+        : this.getCardChanges(
+            currentListingSnapshot.defaultNum,
+            previousCards,
+            currentCards,
+          )),
     ];
 
     if (
@@ -494,24 +499,62 @@ export class EduPageStrategy implements ScraperStrategy {
         ),
       );
 
+    const currentTtNums = new Set(timetables.map(({ tt_num: ttNum }) => ttNum));
+    const removedTtNums = previousSnapshot.ttNums.filter(
+      (ttNum) => !currentTtNums.has(ttNum),
+    );
+    const removedPosts = removedTtNums.map((ttNum) =>
+      this.createTimetablePost(
+        'Отстранет распоред на EduPage',
+        `removed-tt:${ttNum}`,
+        {
+          name: ttNum,
+          // eslint-disable-next-line camelcase -- EduPage API field name
+          tt_num: ttNum,
+        },
+      ),
+    );
+    const posts = [...timetablePosts, ...removedPosts];
+
     if (defaultNum === previousSnapshot.defaultNum) {
-      return timetablePosts;
+      return posts;
     }
 
     const defaultTimetable = timetables.find(
       ({ tt_num: ttNum }) => ttNum === defaultNum,
     );
 
-    return defaultTimetable === undefined
-      ? timetablePosts
-      : [
-          ...timetablePosts,
-          this.createTimetablePost(
-            'Нов активен распоред',
-            `default-tt:${defaultTimetable.tt_num}`,
-            defaultTimetable,
-          ),
-        ];
+    if (defaultTimetable !== undefined || defaultNum !== '') {
+      const activeTimetable = defaultTimetable ?? {
+        name: defaultNum,
+        // eslint-disable-next-line camelcase -- EduPage API field name
+        tt_num: defaultNum,
+      };
+      posts.push(
+        this.createTimetablePost(
+          'Нов активен распоред',
+          `default-tt:${activeTimetable.tt_num}`,
+          activeTimetable,
+        ),
+      );
+    } else if (
+      previousSnapshot.defaultNum !== '' &&
+      !removedTtNums.includes(previousSnapshot.defaultNum)
+    ) {
+      posts.push(
+        this.createTimetablePost(
+          'Нема активен распоред',
+          `inactive-tt:${previousSnapshot.defaultNum}`,
+          {
+            name: previousSnapshot.defaultNum,
+            // eslint-disable-next-line camelcase -- EduPage API field name
+            tt_num: previousSnapshot.defaultNum,
+          },
+        ),
+      );
+    }
+
+    return posts;
   }
 
   private resolveCards(timetable: TimetableResponse): ResolvedCard[] {
