@@ -1,9 +1,4 @@
-import {
-  type APIMessageTopLevelComponent,
-  type JSONEncodable,
-  MessageFlagsBitField,
-  WebhookClient,
-} from 'discord.js';
+import { MessageFlagsBitField, WebhookClient } from 'discord.js';
 import { isCookieHeaderValid } from 'finki-auth';
 import { randomUUID } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
@@ -25,10 +20,23 @@ import {
 } from './utils/analytics.js';
 import { createMentionComponent } from './utils/components.js';
 import { ERROR_MESSAGES, LOG_MESSAGES } from './utils/constants.js';
+import {
+  type MaterializedBatch,
+  materializeDeliveryBatches,
+} from './utils/delivery.js';
 import { logger } from './utils/logger.js';
 import { errorCategory } from './utils/safe-error.js';
 import { createStrategy } from './utils/strategies.js';
 import { errorWebhook } from './utils/webhooks.js';
+
+type PendingDelivery = {
+  batches: MaterializedBatch[];
+  commit: () => void;
+  cursor: number;
+  itemsFound: number;
+  itemsNew: number;
+  preflightError?: Error;
+};
 
 export class Scraper {
   public get name() {
@@ -38,6 +46,8 @@ export class Scraper {
   private cookie: string | undefined;
 
   private readonly logger: Logger;
+
+  private pendingDelivery: PendingDelivery | undefined;
 
   private readonly scraperConfig: ScraperConfig;
 
@@ -93,7 +103,9 @@ export class Scraper {
       captureScrapeStarted({ runId: run.runId, source: this.scraperName });
 
       try {
-        await this.validateCookie();
+        if (this.pendingDelivery === undefined) {
+          await this.validateCookie();
+        }
         await this.getAndSendPosts(run);
       } catch (error) {
         run.status = 'error';
@@ -147,27 +159,131 @@ export class Scraper {
     }
   }
 
-  private async getAndSendPosts(run: ScrapeRunEvent): Promise<void> {
-    run.phase = 'cookie_acquisition';
-    if (this.cookie === undefined && this.strategy.getCookie !== undefined) {
-      this.cookie = await this.strategy.getCookie();
-      logger.info(`[${this.scraperName}] ${LOG_MESSAGES.fetchedCookie}`);
+  private captureDeliveryOutcome(run: ScrapeRunEvent, success: boolean): void {
+    let reason: ScrapeRunEvent['reason'] = 'delivery_error';
+    if (success) reason = 'completed';
+    else if (run.reason === 'missing_webhook') reason = 'missing_webhook';
+    captureNotificationSent({
+      attempted: run.attempted,
+      confirmedSent: run.confirmedSent,
+      count: run.confirmedSent,
+      failedAttempted: run.failedAttempted,
+      notAttempted: run.notAttempted,
+      reason,
+      runId: run.runId,
+      source: this.scraperName,
+      success,
+    });
+  }
+
+  private commitEmptyResult(run: ScrapeRunEvent, commit: () => void): void {
+    this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.noNewPosts}`);
+    run.outcome = 'empty';
+    run.reason = 'empty';
+    run.phase = 'commit';
+    commit();
+  }
+
+  private commitPendingDelivery(
+    run: ScrapeRunEvent,
+    pending: PendingDelivery,
+    sendPosts: boolean,
+  ): void {
+    run.outcome = sendPosts ? 'delivered' : 'disabled';
+    run.reason = sendPosts ? 'completed' : 'disabled';
+    run.phase = 'commit';
+    pending.commit();
+    this.pendingDelivery = undefined;
+  }
+
+  private countPendingPosts(pending: PendingDelivery): number {
+    if (pending.batches.length === 0 && pending.cursor === 0) {
+      return pending.itemsNew;
     }
 
-    run.phase = 'fetch';
-    const maxPosts =
-      this.scraperConfig.maxPosts ?? getConfigProperty('maxPosts');
+    return pending.batches
+      .slice(pending.cursor)
+      .reduce((total, batch) => total + batch.postCount, 0);
+  }
 
-    const scrapeStart = performance.now();
-    let strategyResult: StrategyResult;
+  private createPendingDelivery(
+    result: StrategyResult,
+    run: ScrapeRunEvent,
+  ): PendingDelivery {
+    const pending: PendingDelivery = {
+      batches: [],
+      commit: result.commit,
+      cursor: 0,
+      itemsFound: result.itemsFound ?? result.posts.length,
+      itemsNew: result.posts.length,
+    };
+    this.pendingDelivery = pending;
 
+    if (getConfigProperty('sendPosts')) {
+      run.phase = 'delivery';
+      try {
+        const mention =
+          this.scraperConfig.role === undefined ||
+          this.scraperConfig.role === ''
+            ? undefined
+            : createMentionComponent(this.scraperConfig.role);
+        pending.batches = materializeDeliveryBatches(
+          result.posts.map((post) => post.component),
+          mention,
+        );
+      } catch (error) {
+        pending.preflightError =
+          error instanceof Error
+            ? error
+            : new Error('delivery_preflight_error');
+      }
+    }
+
+    return pending;
+  }
+
+  private async deliverPending(
+    pending: PendingDelivery,
+    run: ScrapeRunEvent,
+  ): Promise<void> {
     try {
-      strategyResult = await this.strategy.getChanges({
+      if (pending.preflightError !== undefined) {
+        throw pending.preflightError;
+      }
+      if (this.webhook === undefined) {
+        run.reason = 'missing_webhook';
+        throw new Error('missing_webhook');
+      }
+      await this.sendPendingBatches(pending, this.webhook, run);
+      logger.info(`[${this.scraperName}] ${LOG_MESSAGES.sentNewPosts}`);
+    } catch (error) {
+      this.captureDeliveryOutcome(run, false);
+      throw error;
+    }
+    this.captureDeliveryOutcome(run, true);
+  }
+
+  private async fetchStrategyResult(
+    run: ScrapeRunEvent,
+    maxPosts: number,
+  ): Promise<StrategyResult> {
+    const scrapeStart = performance.now();
+    try {
+      const result = await this.strategy.getChanges({
         cookie: this.cookie,
         link: this.scraperConfig.link,
         maxPosts,
         scraperId: this.scraperName,
       });
+      captureSourceScraped({
+        durationMs: Math.round(performance.now() - scrapeStart),
+        recordsAdded: result.posts.length,
+        recordsTotal: result.itemsFound ?? result.posts.length,
+        runId: run.runId,
+        source: this.scraperName,
+        success: true,
+      });
+      return result;
     } catch (error) {
       captureSourceScraped({
         durationMs: Math.round(performance.now() - scrapeStart),
@@ -179,80 +295,44 @@ export class Scraper {
       });
       throw error;
     }
+  }
 
-    const { commit, itemsFound, posts } = strategyResult;
+  private async getAndSendPosts(run: ScrapeRunEvent): Promise<void> {
+    const maxPosts =
+      this.scraperConfig.maxPosts ?? getConfigProperty('maxPosts');
 
-    captureSourceScraped({
-      durationMs: Math.round(performance.now() - scrapeStart),
-      recordsAdded: posts.length,
-      recordsTotal: itemsFound ?? posts.length,
-      runId: run.runId,
-      source: this.scraperName,
-      success: true,
-    });
+    let pending = this.pendingDelivery;
+    if (pending === undefined) {
+      run.phase = 'cookie_acquisition';
+      if (this.cookie === undefined && this.strategy.getCookie !== undefined) {
+        this.cookie = await this.strategy.getCookie();
+        logger.info(`[${this.scraperName}] ${LOG_MESSAGES.fetchedCookie}`);
+      }
 
-    run.itemsFound = itemsFound ?? posts.length;
-    run.itemsNew = posts.length;
-    run.notAttempted = posts.length;
+      run.phase = 'fetch';
+      const strategyResult = await this.fetchStrategyResult(run, maxPosts);
+      this.setFetchedRunCounts(run, strategyResult);
+      if (strategyResult.posts.length === 0) {
+        this.commitEmptyResult(run, strategyResult.commit);
+        return;
+      }
 
-    if (posts.length === 0) {
-      this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.noNewPosts}`);
-      run.outcome = 'empty';
-      run.reason = 'empty';
-      run.phase = 'commit';
-      commit();
-      return;
+      pending = this.createPendingDelivery(strategyResult, run);
+    } else {
+      run.phase = 'fetch';
     }
 
+    run.itemsFound = pending.itemsFound;
+    run.itemsNew = pending.itemsNew;
+    run.notAttempted = this.countPendingPosts(pending);
     const sendPosts = getConfigProperty('sendPosts');
 
     if (sendPosts) {
       run.phase = 'delivery';
-      try {
-        if (this.webhook === undefined) {
-          run.reason = 'missing_webhook';
-          throw new Error('missing_webhook');
-        }
-        await this.sendBatch(
-          posts.map((post) => post.component),
-          this.webhook,
-          run,
-        );
-        captureNotificationSent({
-          attempted: run.attempted,
-          confirmedSent: run.confirmedSent,
-          count: posts.length,
-          failedAttempted: run.failedAttempted,
-          notAttempted: run.notAttempted,
-          reason: 'completed',
-          runId: run.runId,
-          source: this.scraperName,
-          success: true,
-        });
-        logger.info(`[${this.scraperName}] ${LOG_MESSAGES.sentNewPosts}`);
-      } catch (error) {
-        captureNotificationSent({
-          attempted: run.attempted,
-          confirmedSent: run.confirmedSent,
-          count: run.confirmedSent,
-          failedAttempted: run.failedAttempted,
-          notAttempted: run.notAttempted,
-          reason:
-            run.reason === 'missing_webhook'
-              ? 'missing_webhook'
-              : 'delivery_error',
-          runId: run.runId,
-          source: this.scraperName,
-          success: false,
-        });
-        throw error;
-      }
+      await this.deliverPending(pending, run);
     }
 
-    run.outcome = sendPosts ? 'delivered' : 'disabled';
-    run.reason = sendPosts ? 'completed' : 'disabled';
-    run.phase = 'commit';
-    commit();
+    this.commitPendingDelivery(run, pending, sendPosts);
   }
 
   private async handleError(
@@ -287,47 +367,43 @@ export class Scraper {
     }
   }
 
-  private async sendBatch(
-    components: Array<JSONEncodable<APIMessageTopLevelComponent>>,
+  private async sendPendingBatches(
+    pending: PendingDelivery,
     webhook: WebhookClient,
     run: ScrapeRunEvent,
   ): Promise<void> {
-    if (components.length === 0) {
-      return;
-    }
-
-    const mentionComponent =
-      this.scraperConfig.role === undefined || this.scraperConfig.role === ''
-        ? undefined
-        : createMentionComponent(this.scraperConfig.role);
-
-    // Discord allows 40 total components per message. The heaviest strategy
-    // (Diplomas/Masters) builds ~9 components per post. 4 posts × 9 = 36,
-    // plus 1 mention = 37. Well under the 40 limit.
-    const chunkSize = 4;
-
-    for (let index = 0; index < components.length; index += chunkSize) {
-      const chunk = components.slice(index, index + chunkSize);
-      const messageComponents = mentionComponent
-        ? [mentionComponent, ...chunk]
-        : chunk;
-
+    while (pending.cursor < pending.batches.length) {
+      const batch = pending.batches[pending.cursor];
+      if (batch === undefined) return;
       try {
-        run.attempted += chunk.length;
-        run.notAttempted = components.length - run.attempted;
+        run.attempted += batch.postCount;
+        run.notAttempted = Math.max(
+          0,
+          (run.notAttempted ?? 0) - batch.postCount,
+        );
         await webhook.send({
-          components: messageComponents,
+          components: batch.components,
           flags: MessageFlagsBitField.Flags.IsComponentsV2,
           username: this.scraperConfig.name ?? this.scraperName,
           withComponents: true,
         });
-        run.confirmedSent += chunk.length;
+        // Advance immediately after Discord acknowledges the message, before
+        // analytics or other fallible work can interrupt this run.
+        pending.cursor += 1;
+        run.confirmedSent += batch.postCount;
       } catch (error) {
-        // A rejected send means no confirmed acknowledgement, not proof of
-        // non-delivery. Retrying the uncommitted run can duplicate earlier chunks.
-        run.failedAttempted += chunk.length;
+        run.failedAttempted += batch.postCount;
         throw error;
       }
     }
+  }
+
+  private setFetchedRunCounts(
+    run: ScrapeRunEvent,
+    result: StrategyResult,
+  ): void {
+    run.itemsFound = result.itemsFound ?? result.posts.length;
+    run.itemsNew = result.posts.length;
+    run.notAttempted = result.posts.length;
   }
 }

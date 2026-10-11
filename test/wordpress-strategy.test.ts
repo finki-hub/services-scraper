@@ -76,9 +76,11 @@ describe('WordPress strategies', () => {
         scraperId: strategyName,
       });
 
-      expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(fetchMock.mock.calls[0]?.[0]).toBe(
         `https://finki.ukim.mk/wp-json/wp/v2/${collection}?per_page=5&offset=0&_embed=1`,
       );
+      expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
       expect(result.itemsFound).toBe(1);
       expect(result.posts).toHaveLength(1);
 
@@ -207,14 +209,14 @@ describe('WordPress strategies', () => {
       scraperId: 'jobs',
     });
 
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
       'https://finki.ukim.mk/wp-json/wp/v2/jobs-and-internships?per_page=100&offset=0&_embed=1',
     );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
       'https://finki.ukim.mk/wp-json/wp/v2/jobs-and-internships?per_page=1&offset=100&_embed=1',
     );
+    expect(fetchMock.mock.calls[1]?.[1]?.signal).toBeInstanceOf(AbortSignal);
     expect(result.itemsFound).toBe(101);
     expect(new Set(result.posts.map(({ id }) => id)).size).toBe(101);
   });

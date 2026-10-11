@@ -24,6 +24,7 @@ import {
 } from '../../utils/cache.js';
 import { truncateString } from '../../utils/components.js';
 import { ERROR_MESSAGES } from '../../utils/constants.js';
+import { fetchWithTimeout } from '../../utils/fetch.js';
 import {
   parseWordPressPage,
   type WordPressItem,
@@ -219,7 +220,7 @@ export abstract class WordPressStrategy implements ScraperStrategy {
     let response: Response;
 
     try {
-      response = await fetch(url);
+      response = await fetchWithTimeout(url);
     } catch (error) {
       throw new Error(ERROR_MESSAGES.fetchFailed, { cause: error });
     }

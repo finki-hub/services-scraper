@@ -60,6 +60,14 @@ PostHog product analytics are wired through environment variables. They are no-o
 
 Analytics require an explicit `POSTHOG_KEY` in the environment; without it the scraper runs silently with no telemetry.
 
+## Reliability and delivery
+
+- HTML, WordPress, and EduPage scrape requests have a 30-second timeout, including response-body reads. EduPage rejects unsuccessful HTTP responses.
+- Malformed EduPage snapshots are treated as missing baselines. Listing and lesson snapshots are saved together in one SQLite transaction.
+- Discord messages are packed using their actual nested component count, including role mentions, within the 40-component limit. A single oversized post is rejected before any posts are sent.
+- Failed delivery resumes with the same pending payloads, without refetching or resending previously acknowledged batches. If saving the cache fails after delivery, only the cache commit is retried.
+- Retry progress is held in memory: restarting can replay acknowledged but uncommitted posts. Discord may also accept a message whose acknowledgement is lost, so retries are not exactly-once delivery. A permanently failing batch or commit blocks fresh polling for that scraper until resolved.
+
 ## License
 
 This project is licensed under the terms of the MIT license.
