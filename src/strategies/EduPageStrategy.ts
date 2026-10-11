@@ -316,16 +316,6 @@ export class EduPageStrategy implements ScraperStrategy {
           )),
     ];
 
-    if (
-      posts.length === 0 &&
-      currentListingSnapshot.defaultNum === '' &&
-      previousListingSnapshot.defaultNum !== ''
-    ) {
-      commit();
-
-      return { commit: () => {}, posts };
-    }
-
     return { commit, posts };
   }
 
@@ -503,18 +493,7 @@ export class EduPageStrategy implements ScraperStrategy {
     const removedTtNums = previousSnapshot.ttNums.filter(
       (ttNum) => !currentTtNums.has(ttNum),
     );
-    const removedPosts = removedTtNums.map((ttNum) =>
-      this.createTimetablePost(
-        'Отстранет распоред на EduPage',
-        `removed-tt:${ttNum}`,
-        {
-          name: ttNum,
-          // eslint-disable-next-line camelcase -- EduPage API field name
-          tt_num: ttNum,
-        },
-      ),
-    );
-    const posts = [...timetablePosts, ...removedPosts];
+    const posts = [...timetablePosts];
 
     if (defaultNum === previousSnapshot.defaultNum) {
       return posts;

@@ -152,7 +152,7 @@ describe('EduPageStrategy', () => {
     expect(result.posts.map(({ id }) => id)).toStrictEqual(['new-tt:29']);
   });
 
-  it('notifies removals of inactive and active timetables', async () => {
+  it('does not notify removed timetables alongside a new active timetable', async () => {
     mockSnapshots(makeListingSnapshot('28', ['27', '28']), {
       'cards:28': '[]',
     });
@@ -161,8 +161,6 @@ describe('EduPageStrategy', () => {
 
     expect(result.posts.map(({ id }) => id)).toStrictEqual([
       'new-tt:29',
-      'removed-tt:27',
-      'removed-tt:28',
       'default-tt:29',
     ]);
   });
@@ -182,12 +180,12 @@ describe('EduPageStrategy', () => {
     expect(cacheMocks.setSnapshot).not.toHaveBeenCalled();
   });
 
-  it('reports active timetable removal without an extra deactivation notification', async () => {
-    mockSnapshots(makeListingSnapshot('28', ['28']));
+  it('silently persists removal of active and inactive timetables', async () => {
+    mockSnapshots(makeListingSnapshot('28', ['27', '28']));
 
     const result = await runStrategy('', []);
 
-    expect(result.posts.map(({ id }) => id)).toStrictEqual(['removed-tt:28']);
+    expect(result.posts).toStrictEqual([]);
     expect(cacheMocks.setSnapshot).not.toHaveBeenCalled();
 
     result.commit();
