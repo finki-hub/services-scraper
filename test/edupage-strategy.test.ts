@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EduPageStrategy } from '../src/strategies/EduPageStrategy.js';
 
@@ -101,9 +101,6 @@ const runStrategy = async (
     fetchMock.mockResolvedValueOnce(timetableResponse(cards));
   }
   vi.stubGlobal('fetch', fetchMock);
-  vi.stubGlobal('Temporal', {
-    Now: { plainDateISO: () => ({ month: 8, year: 2_026 }) },
-  });
 
   return new EduPageStrategy().getChanges({
     cookie: undefined,
@@ -112,6 +109,12 @@ const runStrategy = async (
     scraperId: SCRAPER_ID,
   });
 };
+
+beforeEach(() => {
+  vi.stubGlobal('Temporal', {
+    Now: { plainDateISO: () => ({ month: 8, year: 2_026 }) },
+  });
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -392,9 +395,6 @@ describe('EduPageStrategy', () => {
         Response.json({ r: { error: 'Timetable does not exists' } }),
       );
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('Temporal', {
-      Now: { plainDateISO: () => ({ month: 8, year: 2_026 }) },
-    });
     const strategy = new EduPageStrategy();
 
     const result = await strategy.getChanges({
@@ -434,9 +434,6 @@ describe('EduPageStrategy', () => {
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('Temporal', {
-      Now: { plainDateISO: () => ({ month: 8, year: 2_026 }) },
-    });
     const strategy = new EduPageStrategy();
 
     const result = await strategy.getChanges({
