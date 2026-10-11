@@ -1,16 +1,24 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EduPageStrategy } from '../src/strategies/EduPageStrategy.js';
 
 const cacheMocks = vi.hoisted(() => ({
   getSnapshot: vi.fn<(scraperId: string, key: string) => string | undefined>(),
   setSnapshot: vi.fn<(scraperId: string, key: string, value: string) => void>(),
+  setSnapshots: vi.fn<
+    (scraperId: string, snapshots: Record<string, string>) => void
+  >((scraperId: string, snapshots: Record<string, string>) => {
+    for (const [key, value] of Object.entries(snapshots)) {
+      cacheMocks.setSnapshot(scraperId, key, value);
+    }
+  }),
 }));
 
 vi.mock('../src/utils/cache.js', () => cacheMocks);
 
 const LISTING_KEY = 'listing';
 const SCRAPER_ID = 'edupage-test';
+const BASE_URL = 'https://finki.edupage.org';
 
 const makeListingSnapshot = (defaultNum: string, ttNums: string[]): string =>
   JSON.stringify({ defaultNum, ttNums });
@@ -93,26 +101,30 @@ const runStrategy = async (
     fetchMock.mockResolvedValueOnce(timetableResponse(cards));
   }
   vi.stubGlobal('fetch', fetchMock);
-  vi.stubGlobal('Temporal', {
-    Now: { plainDateISO: () => ({ month: 8, year: 2_026 }) },
-  });
 
   return new EduPageStrategy().getChanges({
     cookie: undefined,
-    link: 'https://finki.edupage.org',
+    link: BASE_URL,
     maxPosts: 20,
     scraperId: SCRAPER_ID,
   });
 };
+
+beforeEach(() => {
+  vi.stubGlobal('Temporal', {
+    Now: { plainDateISO: () => ({ month: 8, year: 2_026 }) },
+  });
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   cacheMocks.getSnapshot.mockReset();
   cacheMocks.setSnapshot.mockReset();
+  cacheMocks.setSnapshots.mockClear();
 });
 
-describe('EduPageStrategy', () => {
+describe('EduPageStrategy baselines and request errors', () => {
   it('keeps the first listing as a silent baseline', async () => {
     cacheMocks.getSnapshot.mockReturnValue(undefined);
 
@@ -126,6 +138,95 @@ describe('EduPageStrategy', () => {
     );
   });
 
+  it('treats malformed persisted listing JSON as a missing baseline', async () => {
+    mockSnapshots('{broken');
+
+    const result = await runStrategy('29', ['29']);
+
+    expect(result.posts).toStrictEqual([]);
+    expect(cacheMocks.setSnapshots).toHaveBeenCalledExactlyOnceWith(
+      SCRAPER_ID,
+      {
+        'cards:29': '[]',
+        listing: makeListingSnapshot('29', ['29']),
+      },
+    );
+  });
+
+  it('treats malformed persisted cards JSON as a missing card baseline', async () => {
+    mockSnapshots(makeListingSnapshot('28', ['28']), { 'cards:28': '{broken' });
+
+    const result = await runStrategy(
+      '28',
+      ['28'],
+      [
+        {
+          days: '1000000',
+          durationperiods: '1',
+          id: 'card-1',
+          lessonid: 'lesson-1',
+        },
+      ],
+    );
+
+    expect(result.posts).toStrictEqual([]);
+    expect(cacheMocks.setSnapshots).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-2xx listing response even when its JSON matches the schema', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json(
+        {
+          r: {
+            regular: {
+              // eslint-disable-next-line camelcase -- EduPage API field name
+              default_num: '29',
+              // eslint-disable-next-line camelcase -- EduPage API field name
+              timetables: [{ tt_num: '29' }],
+            },
+          },
+        },
+        { headers: { 'Content-Type': 'application/json' }, status: 503 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      new EduPageStrategy().getChanges({
+        cookie: undefined,
+        link: BASE_URL,
+        maxPosts: 20,
+        scraperId: SCRAPER_ID,
+      }),
+    ).rejects.toThrow('EduPage listing request failed with status 503');
+    expect(cacheMocks.setSnapshots).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-2xx timetable response before any snapshot commit', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(listingResponse('29', ['29']))
+      .mockResolvedValueOnce(
+        Response.json(
+          { r: { dbiAccessorRes: { tables: [] } } },
+          { headers: { 'Content-Type': 'application/json' }, status: 500 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      new EduPageStrategy().getChanges({
+        cookie: undefined,
+        link: BASE_URL,
+        maxPosts: 20,
+        scraperId: SCRAPER_ID,
+      }),
+    ).rejects.toThrow('EduPage timetable request failed with status 500');
+    expect(cacheMocks.setSnapshots).not.toHaveBeenCalled();
+  });
+});
+
+describe('EduPageStrategy timetable changes', () => {
   it('notifies a new active timetable even when its card baseline is missing', async () => {
     mockSnapshots(makeListingSnapshot('28', ['28']));
 
@@ -133,10 +234,15 @@ describe('EduPageStrategy', () => {
 
     expect(result.posts.map(({ id }) => id)).toContain('new-tt:29');
     expect(result.posts.map(({ id }) => id)).toContain('default-tt:29');
+    expect(cacheMocks.setSnapshots).not.toHaveBeenCalled();
     expect(cacheMocks.setSnapshot).not.toHaveBeenCalled();
 
     result.commit();
 
+    expect(cacheMocks.setSnapshots).toHaveBeenCalledExactlyOnceWith(
+      SCRAPER_ID,
+      { 'cards:29': '[]', listing: makeListingSnapshot('29', ['28', '29']) },
+    );
     expect(cacheMocks.setSnapshot).toHaveBeenCalledWith(
       SCRAPER_ID,
       'cards:29',
@@ -271,7 +377,9 @@ describe('EduPageStrategy', () => {
       postIds.filter((id) => id?.startsWith('change:28:card-2:')),
     ).toHaveLength(1);
   });
+});
 
+describe('EduPageStrategy inactive timetable behavior', () => {
   it('skips card data fetching when EduPage has no active timetable', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -291,14 +399,11 @@ describe('EduPageStrategy', () => {
         Response.json({ r: { error: 'Timetable does not exists' } }),
       );
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('Temporal', {
-      Now: { plainDateISO: () => ({ month: 8, year: 2_026 }) },
-    });
     const strategy = new EduPageStrategy();
 
     const result = await strategy.getChanges({
       cookie: undefined,
-      link: 'https://finki.edupage.org',
+      link: BASE_URL,
       maxPosts: 20,
       scraperId: SCRAPER_ID,
     });
@@ -333,14 +438,11 @@ describe('EduPageStrategy', () => {
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('Temporal', {
-      Now: { plainDateISO: () => ({ month: 8, year: 2_026 }) },
-    });
     const strategy = new EduPageStrategy();
 
     const result = await strategy.getChanges({
       cookie: undefined,
-      link: 'https://finki.edupage.org',
+      link: BASE_URL,
       maxPosts: 20,
       scraperId: SCRAPER_ID,
     });

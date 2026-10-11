@@ -13,8 +13,9 @@ import type {
   StrategyResult,
 } from '../lib/Scraper.js';
 
-import { getSnapshot, setSnapshot } from '../utils/cache.js';
+import { getSnapshot, setSnapshots } from '../utils/cache.js';
 import { truncateString } from '../utils/components.js';
+import { fetchWithTimeout } from '../utils/fetch.js';
 
 const SPLIT_REGEX = /[,;]/u;
 const CARD_ID_COLLATOR = new Intl.Collator();
@@ -250,7 +251,17 @@ const parseListingSnapshot = (
     return undefined;
   }
 
-  const parsed = ListingSnapshotSchema.safeParse(JSON.parse(snapshot));
+  let value: unknown;
+
+  try {
+    value = JSON.parse(snapshot);
+  } catch (error) {
+    if (error instanceof SyntaxError) return undefined;
+
+    throw error;
+  }
+
+  const parsed = ListingSnapshotSchema.safeParse(value);
 
   return parsed.success ? parsed.data : undefined;
 };
@@ -262,7 +273,17 @@ const parseCardsSnapshot = (
     return undefined;
   }
 
-  const parsed = ResolvedCardsSnapshotSchema.safeParse(JSON.parse(snapshot));
+  let value: unknown;
+
+  try {
+    value = JSON.parse(snapshot);
+  } catch (error) {
+    if (error instanceof SyntaxError) return undefined;
+
+    throw error;
+  }
+
+  const parsed = ResolvedCardsSnapshotSchema.safeParse(value);
 
   return parsed.success ? parsed.data : undefined;
 };
@@ -288,8 +309,10 @@ export class EduPageStrategy implements ScraperStrategy {
     const previousCards = parseCardsSnapshot(getSnapshot(scraperId, cardsKey));
 
     const commit = () => {
-      setSnapshot(scraperId, 'listing', JSON.stringify(currentListingSnapshot));
-      setSnapshot(scraperId, cardsKey, JSON.stringify(currentCards));
+      setSnapshots(scraperId, {
+        [cardsKey]: JSON.stringify(currentCards),
+        listing: JSON.stringify(currentListingSnapshot),
+      });
     };
 
     if (previousListingSnapshot === undefined) {
@@ -405,7 +428,7 @@ export class EduPageStrategy implements ScraperStrategy {
   }
 
   private async fetchListing(baseUrl: string): Promise<ListingResponse> {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${baseUrl}/timetable/server/ttviewer.js?__func=getTTViewerData&ESID=`,
       {
         body: JSON.stringify({
@@ -419,6 +442,12 @@ export class EduPageStrategy implements ScraperStrategy {
       },
     );
 
+    if (!response.ok) {
+      throw new Error(
+        `EduPage listing request failed with status ${response.status}`,
+      );
+    }
+
     return ListingResponseSchema.parse(await response.json());
   }
 
@@ -426,7 +455,7 @@ export class EduPageStrategy implements ScraperStrategy {
     baseUrl: string,
     ttNum: string,
   ): Promise<TimetableResponse> {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${baseUrl}/timetable/server/regulartt.js?__func=regularttGetData&ESID=`,
       {
         body: JSON.stringify({ __args: [null, ttNum], __gsh: '00000000' }),
@@ -436,6 +465,12 @@ export class EduPageStrategy implements ScraperStrategy {
         method: 'POST',
       },
     );
+
+    if (!response.ok) {
+      throw new Error(
+        `EduPage timetable request failed with status ${response.status}`,
+      );
+    }
 
     return TimetableResponseSchema.parse(await response.json());
   }

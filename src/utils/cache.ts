@@ -186,6 +186,27 @@ export const setSnapshot = (
   upsert.run(scraperId, key, value);
 };
 
+export const setSnapshots = (
+  scraperId: string,
+  snapshots: Record<string, string>,
+): void => {
+  const database = initializeDatabase();
+  const upsert = prepareStatement('snapshotUpsert', SNAPSHOT_UPSERT_SQL);
+
+  database.exec('BEGIN');
+
+  try {
+    for (const [key, value] of Object.entries(snapshots)) {
+      upsert.run(scraperId, key, value);
+    }
+
+    database.exec('COMMIT');
+  } catch (error) {
+    database.exec('ROLLBACK');
+    throw error;
+  }
+};
+
 export const closeCache = (): void => {
   statements.clear();
   dbState.connection?.close();

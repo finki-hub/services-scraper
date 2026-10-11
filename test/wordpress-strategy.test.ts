@@ -41,7 +41,7 @@ afterEach(() => {
   cacheMocks.setSnapshot.mockReset();
 });
 
-describe('WordPress strategies', () => {
+describe('WordPress collection and identity behavior', () => {
   it.each([
     ['announcements', 'announcement'],
     ['jobs', 'jobs-and-internships'],
@@ -76,9 +76,11 @@ describe('WordPress strategies', () => {
         scraperId: strategyName,
       });
 
-      expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(fetchMock.mock.calls[0]?.[0]).toBe(
         `https://finki.ukim.mk/wp-json/wp/v2/${collection}?per_page=5&offset=0&_embed=1`,
       );
+      expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
       expect(result.itemsFound).toBe(1);
       expect(result.posts).toHaveLength(1);
 
@@ -177,7 +179,9 @@ describe('WordPress strategies', () => {
 
     expect(result.posts).toHaveLength(2);
   });
+});
 
+describe('WordPress pagination and request errors', () => {
   it('paginates WordPress requests above the collection page limit', async () => {
     cacheMocks.getSeenPostIds.mockReturnValue(new Set());
     const firstPage = Array.from({ length: 100 }, (_, index) =>
@@ -207,14 +211,14 @@ describe('WordPress strategies', () => {
       scraperId: 'jobs',
     });
 
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
       'https://finki.ukim.mk/wp-json/wp/v2/jobs-and-internships?per_page=100&offset=0&_embed=1',
     );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
       'https://finki.ukim.mk/wp-json/wp/v2/jobs-and-internships?per_page=1&offset=100&_embed=1',
     );
+    expect(fetchMock.mock.calls[1]?.[1]?.signal).toBeInstanceOf(AbortSignal);
     expect(result.itemsFound).toBe(101);
     expect(new Set(result.posts.map(({ id }) => id)).size).toBe(101);
   });
@@ -321,7 +325,9 @@ describe('WordPress strategies', () => {
     ).rejects.toThrow('Posts not found');
     expect(cacheMocks.markPostsSeen).not.toHaveBeenCalled();
   });
+});
 
+describe('WordPress content validation and rendering', () => {
   it('rejects external WordPress post and media URLs', async () => {
     cacheMocks.getSeenPostIds.mockReturnValue(new Set());
     const { JobsStrategy } = await import('../src/strategies/JobsStrategy.js');

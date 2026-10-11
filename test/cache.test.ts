@@ -199,6 +199,54 @@ describe('JSON snapshot cache', () => {
     expect(cache.getSnapshot('edupage', 'listing')).toBe('{"v":2}');
   });
 
+  it('writes a snapshot pair in one transaction', async () => {
+    const cache = await loadCache();
+
+    cache.setSnapshots('edupage', { 'cards:28': '[]', listing: '{"v":1}' });
+
+    expect(cache.getSnapshot('edupage', 'listing')).toBe('{"v":1}');
+    expect(cache.getSnapshot('edupage', 'cards:28')).toBe('[]');
+  });
+
+  it('rolls back every snapshot in a pair when one write fails', async () => {
+    const cache = await loadCache();
+    cache.setSnapshot('edupage', 'listing', '{"old":true}');
+    const database = new DatabaseSync(
+      join(state.cachePath, 'scraper-cache.db'),
+    );
+    database.exec(`
+      CREATE TRIGGER fail_cards_snapshot
+      BEFORE INSERT ON snapshots
+      WHEN NEW.key = 'cards:28'
+      BEGIN
+        SELECT RAISE(ABORT, 'simulated snapshot write failure');
+      END;
+    `);
+    database.close();
+
+    const orderedSnapshots = Object.fromEntries([
+      ['listing', '{"new":true}'],
+      ['cards:28', '[]'],
+    ]);
+
+    expect(() => {
+      cache.setSnapshots('edupage', orderedSnapshots);
+    }).toThrow('simulated snapshot write failure');
+    expect(cache.getSnapshot('edupage', 'listing')).toBe('{"old":true}');
+    expect(cache.getSnapshot('edupage', 'cards:28')).toBeUndefined();
+
+    const triggerDatabase = new DatabaseSync(
+      join(state.cachePath, 'scraper-cache.db'),
+    );
+    triggerDatabase.exec('DROP TRIGGER fail_cards_snapshot');
+    triggerDatabase.close();
+
+    cache.setSnapshots('edupage', orderedSnapshots);
+
+    expect(cache.getSnapshot('edupage', 'listing')).toBe('{"new":true}');
+    expect(cache.getSnapshot('edupage', 'cards:28')).toBe('[]');
+  });
+
   it('keeps scraper and key namespaces separate', async () => {
     const cache = await loadCache();
 

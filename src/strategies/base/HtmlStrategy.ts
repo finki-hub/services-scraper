@@ -14,6 +14,7 @@ import type {
 import { getConfigProperty } from '../../configuration/config.js';
 import { getSeenPostIds, markPostsSeen } from '../../utils/cache.js';
 import { ERROR_MESSAGES } from '../../utils/constants.js';
+import { fetchWithTimeout } from '../../utils/fetch.js';
 import { logger } from '../../utils/logger.js';
 
 const NO_CHANGES: StrategyResult = {
@@ -104,7 +105,7 @@ export abstract class HtmlStrategy implements ScraperStrategy {
     let response: Response;
 
     try {
-      response = await fetch(context.link, requestInit);
+      response = await fetchWithTimeout(context.link, requestInit);
     } catch (error) {
       throw new Error(ERROR_MESSAGES.fetchFailed, { cause: error });
     }

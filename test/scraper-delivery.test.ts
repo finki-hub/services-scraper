@@ -192,6 +192,7 @@ type CapturedEvent = {
 const setupRun = async (
   options: {
     count?: number;
+    oversized?: boolean;
     sendPosts?: boolean;
     stage?: 'acquire' | 'commit' | 'delivery' | 'fetch' | undefined;
     telemetryFails?: boolean;
@@ -223,7 +224,15 @@ const setupRun = async (
   const posts: StrategyResult['posts'] = Array.from(
     { length: options.count ?? 10 },
     (_, index) => ({
-      component: { toJSON: () => ({ components: [], type: 17 }) },
+      component: {
+        toJSON: () =>
+          ({
+            components: options.oversized
+              ? Array.from({ length: 40 }, () => ({ type: 10 }))
+              : [],
+            type: 17,
+          }) as never,
+      },
       id: `${sentinel}-${index}`,
     }),
   );
@@ -379,6 +388,32 @@ test('missing webhook fails explicitly without delivery or checkpoint', async ()
   fixture.assertSafe();
 });
 
+test('oversized post is rejected during preflight before any webhook send', async () => {
+  const fixture = await setupRun({ oversized: true });
+  await fixture.run();
+
+  expect(fixture.getChanges).toHaveBeenCalledOnce();
+  expect(fixture.send).not.toHaveBeenCalled();
+  expect(fixture.commit).not.toHaveBeenCalled();
+  expect(fixture.terminal()[0]).toMatchObject({
+    attempted: 0,
+    failed_attempted: 0,
+    not_attempted: 10,
+    phase: 'delivery',
+    reason: 'delivery_error',
+  });
+  expect(fixture.notification()).toStrictEqual([
+    expect.objectContaining({
+      attempted: 0,
+      confirmed_sent: 0,
+      failed_attempted: 0,
+      not_attempted: 10,
+      reason: 'delivery_error',
+      success: false,
+    }),
+  ]);
+});
+
 test.each([
   { count: 10, outcome: 'disabled', remaining: 10, sendPosts: false },
   { count: 0, outcome: 'empty', remaining: 0, sendPosts: true },
@@ -452,12 +487,13 @@ test('successful chunks count acknowledged sends and correlate all stages across
   fixture.assertSafe();
 });
 
-test('partial failure retains confirmed chunks; uncommitted retry can redeliver them', async () => {
+test('partial failure resumes at the failed batch without refetching', async () => {
   const fixture = await setupRun({ count: 9, stage: 'delivery' });
   await fixture.run();
 
   expect(fixture.commit).not.toHaveBeenCalled();
   expect(fixture.send).toHaveBeenCalledTimes(2);
+  expect(fixture.getChanges).toHaveBeenCalledOnce();
   expect(fixture.notification()).toStrictEqual([
     expect.objectContaining({
       attempted: 8,
@@ -482,17 +518,74 @@ test('partial failure retains confirmed chunks; uncommitted retry can redeliver 
   ]);
   expect(fixture.exceptions).toHaveBeenCalledOnce();
 
+  const { isCookieHeaderValid } = await import('finki-auth');
+  vi.mocked(isCookieHeaderValid).mockRejectedValue(secretError());
+  fixture.send.mockRejectedValueOnce(secretError());
+  await fixture.run();
+
+  expect(fixture.commit).not.toHaveBeenCalled();
+  expect(fixture.send).toHaveBeenCalledTimes(3);
+  expect(fixture.getChanges).toHaveBeenCalledOnce();
+  expect(fixture.getCookie).toHaveBeenCalledOnce();
+  expect(isCookieHeaderValid).not.toHaveBeenCalled();
+  expect(fixture.send.mock.calls[1]).toStrictEqual(fixture.send.mock.calls[2]);
+  expect(fixture.terminal()[1]).toMatchObject({
+    attempted: 4,
+    confirmed_sent: 0,
+    failed_attempted: 4,
+    not_attempted: 1,
+  });
+
   await fixture.run();
 
   expect(fixture.commit).toHaveBeenCalledOnce();
   expect(fixture.send).toHaveBeenCalledTimes(5);
-  expect(fixture.send.mock.calls[0]).toStrictEqual(fixture.send.mock.calls[2]);
-  expect(fixture.terminal()[1]).toMatchObject({
-    confirmed_sent: 9,
+  expect(fixture.getChanges).toHaveBeenCalledOnce();
+  expect(fixture.send.mock.calls[1]).toStrictEqual(fixture.send.mock.calls[2]);
+  expect(fixture.send.mock.calls[2]).toStrictEqual(fixture.send.mock.calls[3]);
+  expect(fixture.terminal()[2]).toMatchObject({
+    attempted: 5,
+    confirmed_sent: 5,
+    not_attempted: 0,
     status: 'success',
   });
 
   fixture.assertSafe();
+});
+
+test('commit failure retry is commit-only and later polling fetches fresh changes', async () => {
+  const fixture = await setupRun();
+  fixture.commit.mockImplementationOnce(() => {
+    throw secretError();
+  });
+  await fixture.run();
+
+  expect(fixture.send).toHaveBeenCalledTimes(3);
+  expect(fixture.commit).toHaveBeenCalledOnce();
+  expect(fixture.getChanges).toHaveBeenCalledOnce();
+
+  expect(fixture.terminal()[0]).toMatchObject({
+    attempted: 10,
+    confirmed_sent: 10,
+    not_attempted: 0,
+    phase: 'commit',
+    reason: 'commit_error',
+  });
+
+  const { isCookieHeaderValid } = await import('finki-auth');
+  vi.mocked(isCookieHeaderValid).mockRejectedValue(secretError());
+  await fixture.run();
+
+  expect(fixture.send).toHaveBeenCalledTimes(3);
+  expect(fixture.commit).toHaveBeenCalledTimes(2);
+  expect(fixture.getChanges).toHaveBeenCalledOnce();
+  expect(fixture.getCookie).toHaveBeenCalledOnce();
+  expect(isCookieHeaderValid).not.toHaveBeenCalled();
+
+  vi.mocked(isCookieHeaderValid).mockResolvedValue(true);
+  await fixture.run();
+
+  expect(fixture.getChanges).toHaveBeenCalledTimes(2);
 });
 
 test.each([
