@@ -4,6 +4,20 @@ import { fetchWithTimeout } from '../src/utils/fetch.js';
 
 const TEST_URL = 'https://example.invalid';
 
+const createAbortableResponse = (
+  signal: AbortSignal | null | undefined,
+): Response => {
+  const body = new ReadableStream<Uint8Array>({
+    start(streamController) {
+      signal?.addEventListener('abort', () => {
+        streamController.error(signal.reason);
+      });
+    },
+  });
+
+  return new Response(body);
+};
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -81,18 +95,9 @@ describe('fetchWithTimeout', () => {
   it('keeps the timeout signal active while the response body is being read', async () => {
     const timeoutController = new AbortController();
     vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeoutController.signal);
-    vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => {
-      const signal = init?.signal;
-      const body = new ReadableStream<Uint8Array>({
-        start(streamController) {
-          signal?.addEventListener('abort', () => {
-            streamController.error(signal.reason);
-          });
-        },
-      });
-
-      return Promise.resolve(new Response(body));
-    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) =>
+      Promise.resolve(createAbortableResponse(init?.signal)),
+    );
 
     const response = await fetchWithTimeout(TEST_URL);
     const responseBody = response.text();

@@ -124,7 +124,7 @@ afterEach(() => {
   cacheMocks.setSnapshots.mockClear();
 });
 
-describe('EduPageStrategy', () => {
+describe('EduPageStrategy baselines and request errors', () => {
   it('keeps the first listing as a silent baseline', async () => {
     cacheMocks.getSnapshot.mockReturnValue(undefined);
 
@@ -224,7 +224,9 @@ describe('EduPageStrategy', () => {
     ).rejects.toThrow('EduPage timetable request failed with status 500');
     expect(cacheMocks.setSnapshots).not.toHaveBeenCalled();
   });
+});
 
+describe('EduPageStrategy timetable changes', () => {
   it('notifies a new active timetable even when its card baseline is missing', async () => {
     mockSnapshots(makeListingSnapshot('28', ['28']));
 
@@ -375,7 +377,9 @@ describe('EduPageStrategy', () => {
       postIds.filter((id) => id?.startsWith('change:28:card-2:')),
     ).toHaveLength(1);
   });
+});
 
+describe('EduPageStrategy inactive timetable behavior', () => {
   it('skips card data fetching when EduPage has no active timetable', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

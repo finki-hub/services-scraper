@@ -41,7 +41,7 @@ afterEach(() => {
   cacheMocks.setSnapshot.mockReset();
 });
 
-describe('WordPress strategies', () => {
+describe('WordPress collection and identity behavior', () => {
   it.each([
     ['announcements', 'announcement'],
     ['jobs', 'jobs-and-internships'],
@@ -179,7 +179,9 @@ describe('WordPress strategies', () => {
 
     expect(result.posts).toHaveLength(2);
   });
+});
 
+describe('WordPress pagination and request errors', () => {
   it('paginates WordPress requests above the collection page limit', async () => {
     cacheMocks.getSeenPostIds.mockReturnValue(new Set());
     const firstPage = Array.from({ length: 100 }, (_, index) =>
@@ -323,7 +325,9 @@ describe('WordPress strategies', () => {
     ).rejects.toThrow('Posts not found');
     expect(cacheMocks.markPostsSeen).not.toHaveBeenCalled();
   });
+});
 
+describe('WordPress content validation and rendering', () => {
   it('rejects external WordPress post and media URLs', async () => {
     cacheMocks.getSeenPostIds.mockReturnValue(new Set());
     const { JobsStrategy } = await import('../src/strategies/JobsStrategy.js');
