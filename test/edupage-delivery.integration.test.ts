@@ -37,11 +37,12 @@ const scraperId = 'edupage-delivery-integration';
 const stopLoopMessage = 'stop integration scraper';
 const stopLoopRegex = /stop integration scraper/u;
 const roleId = '123456789012345678';
+const loopbackUrlRegex = /http:\/\/127\.0\.0\.1:\d+/u;
 
 const state: { fixture: Fixture | undefined } = { fixture: undefined };
 
 const makeTables = (updated: boolean) => {
-  const cards = Array.from({ length: 4 }, (_, index) => ({
+  const cards = Array.from({ length: 225 }, (_, index) => ({
     days: updated ? '0100000' : '1000000',
     durationperiods: updated ? '2' : '1',
     id: `card-${index + 1}`,
@@ -310,7 +311,7 @@ afterEach(async () => {
   vi.resetModules();
 });
 
-test('baselines silently, resumes a failed heavy-card batch, then ignores unchanged cards', async () => {
+test('baselines silently, retries one 225-card summary, then ignores unchanged cards', async () => {
   const current = state.fixture;
   if (current === undefined) throw new Error('missing integration fixture');
 
@@ -324,49 +325,32 @@ test('baselines silently, resumes a failed heavy-card batch, then ignores unchan
   expect(current.networkRequests()).toBe(2);
 
   current.scenario.updated = true;
-  current.send
-    .mockResolvedValueOnce(undefined)
-    .mockRejectedValueOnce(new Error('second webhook message failed'));
+  current.send.mockRejectedValueOnce(new Error('webhook message failed'));
   await expectOneScrapeCycle(current.scraper);
 
-  expect(current.send).toHaveBeenCalledTimes(2);
+  expect(current.send).toHaveBeenCalledOnce();
   expect(current.networkRequests()).toBe(4);
   expect(current.cache.getSnapshot(scraperId, 'listing')).toBe(baselineListing);
   expect(current.cache.getSnapshot(scraperId, 'cards:28')).toBe(baselineCards);
   expect(current.errorSend).toHaveBeenCalledOnce();
 
-  for (const [payload] of current.send.mock.calls) {
-    const components = parseMessageComponents(payload);
+  const firstPayload = current.send.mock.calls[0]?.[0];
+  const firstComponents = parseMessageComponents(firstPayload);
 
-    expect(countComponentTree(components)).toBe(29);
-    expect(JSON.stringify(components)).toContain(`<@&${roleId}>`);
-    expect(JSON.stringify(components)).toContain('Mathematics');
-    expect(JSON.stringify(components)).toContain('Advanced Mathematics');
-    expect(countComponentTree(components)).toBeLessThanOrEqual(40);
-  }
-
-  expect(JSON.stringify(current.send.mock.calls[0])).toContain(
-    '~~Mathematics~~ → Advanced Mathematics',
-  );
+  expect(countComponentTree(firstComponents)).toBe(2);
+  expect(countComponentTree(firstComponents)).toBeLessThanOrEqual(40);
+  expect(JSON.stringify(firstComponents)).toContain(`<@&${roleId}>`);
+  expect(JSON.stringify(firstComponents)).toContain('Промени во распоредот');
+  expect(JSON.stringify(firstComponents)).toMatch(loopbackUrlRegex);
 
   await expectOneScrapeCycle(current.scraper);
 
-  expect(current.send).toHaveBeenCalledTimes(5);
-  expect(current.send.mock.calls[1]).toStrictEqual(current.send.mock.calls[2]);
+  expect(current.send).toHaveBeenCalledTimes(2);
+  expect(current.send.mock.calls[0]).toStrictEqual(current.send.mock.calls[1]);
   expect(current.networkRequests()).toBe(4);
   expect(current.cache.getSnapshot(scraperId, 'cards:28')).not.toBe(
     baselineCards,
   );
-
-  for (const [payload] of current.send.mock.calls) {
-    const components = parseMessageComponents(payload);
-
-    expect(countComponentTree(components)).toBeLessThanOrEqual(40);
-    expect(JSON.stringify(components)).toContain(`<@&${roleId}>`);
-    expect(JSON.stringify(components)).toContain(
-      '~~Mathematics~~ → Advanced Mathematics',
-    );
-  }
 
   const sentAfterRetry = current.send.mock.calls.length;
   await expectOneScrapeCycle(current.scraper);
@@ -400,7 +384,7 @@ test('rolls back a failed SQLite commit, retries commit-only, then reports an un
 
   await expectOneScrapeCycle(current.scraper);
 
-  expect(current.send).toHaveBeenCalledTimes(4);
+  expect(current.send).toHaveBeenCalledOnce();
   expect(current.networkRequests()).toBe(4);
   expect(current.cache.getSnapshot(scraperId, 'listing')).toBe(baselineListing);
   expect(current.cache.getSnapshot(scraperId, 'cards:28')).toBe(baselineCards);
@@ -413,7 +397,7 @@ test('rolls back a failed SQLite commit, retries commit-only, then reports an un
   }
   await expectOneScrapeCycle(current.scraper);
 
-  expect(current.send).toHaveBeenCalledTimes(4);
+  expect(current.send).toHaveBeenCalledOnce();
   expect(current.networkRequests()).toBe(4);
   expect(current.cache.getSnapshot(scraperId, 'listing')).toBe(baselineListing);
   expect(current.cache.getSnapshot(scraperId, 'cards:28')).not.toBe(
@@ -422,27 +406,28 @@ test('rolls back a failed SQLite commit, retries commit-only, then reports an un
 
   await expectOneScrapeCycle(current.scraper);
 
-  expect(current.send).toHaveBeenCalledTimes(4);
+  expect(current.send).toHaveBeenCalledOnce();
   expect(current.networkRequests()).toBe(6);
 
   current.scenario.defaultNum = '29';
   current.scenario.timetableIds = ['28', '29'];
   await expectOneScrapeCycle(current.scraper);
 
-  expect(current.send).toHaveBeenCalledTimes(5);
+  expect(current.send).toHaveBeenCalledTimes(2);
   expect(current.networkRequests()).toBe(8);
 
-  const newTimetablePayloads = current.send.mock.calls.slice(4);
+  const newTimetablePayloads = current.send.mock.calls.slice(1);
 
+  expect(JSON.stringify(newTimetablePayloads)).toContain('EduPage');
   expect(JSON.stringify(newTimetablePayloads)).toContain(
-    'Нов распоред на EduPage',
+    'Промени во распоредот',
   );
-  expect(JSON.stringify(newTimetablePayloads)).toContain(
-    'Нов активен распоред',
-  );
+  expect(
+    countComponentTree(parseMessageComponents(newTimetablePayloads[0]?.[0])),
+  ).toBe(2);
 
   await expectOneScrapeCycle(current.scraper);
 
-  expect(current.send).toHaveBeenCalledTimes(5);
+  expect(current.send).toHaveBeenCalledTimes(2);
   expect(current.networkRequests()).toBe(10);
 }, 10_000);

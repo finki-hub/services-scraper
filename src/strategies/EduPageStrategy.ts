@@ -1,9 +1,4 @@
-import {
-  bold,
-  ContainerBuilder,
-  heading,
-  SeparatorSpacingSize,
-} from 'discord.js';
+import { hyperlink, TextDisplayBuilder } from 'discord.js';
 import { z } from 'zod';
 
 import type { PostData } from '../lib/Post.js';
@@ -14,7 +9,6 @@ import type {
 } from '../lib/Scraper.js';
 
 import { getSnapshot, setSnapshots } from '../utils/cache.js';
-import { truncateString } from '../utils/components.js';
 import { fetchWithTimeout } from '../utils/fetch.js';
 
 const SPLIT_REGEX = /[,;]/u;
@@ -101,15 +95,10 @@ const CARD_FIELDS: CardField[] = [
   'durationPeriods',
 ];
 
-const FIELD_LABELS: Record<CardField, string> = {
-  classes: 'Групи',
-  classrooms: 'Простории',
-  day: 'Ден',
-  durationPeriods: 'Траење',
-  period: 'Час',
-  subject: 'Предмет',
-  teachers: 'Наставници',
-  weeks: 'Недели',
+const compareExactStrings = (left: string, right: string): number => {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 };
 
 const getCurrentSchoolYear = (): number => {
@@ -222,26 +211,38 @@ const getPeriodText = (
   return name === '' ? fallback : name;
 };
 
-const stringifyValue = (value: ResolvedCard[CardField]): string =>
-  Array.isArray(value) ? value.join(', ') || '—' : value || '—';
+const cardContentKey = (card: ResolvedCard): string =>
+  JSON.stringify(
+    CARD_FIELDS.map((field) => {
+      const value = card[field];
+      if (Array.isArray(value)) {
+        return [field, value.toSorted(compareExactStrings)];
+      }
 
-const stableStringify = (card: ResolvedCard): string =>
-  JSON.stringify({
-    cardId: card.cardId,
-    classes: card.classes,
-    classrooms: card.classrooms,
-    day: card.day,
-    durationPeriods: card.durationPeriods,
-    period: card.period,
-    subject: card.subject,
-    teachers: card.teachers,
-    weeks: card.weeks,
-  });
+      return [field, value];
+    }),
+  );
 
-const formatTimetableDate = (timetable: ListingTimetable): string => {
-  const dateFrom = getStringValue(timetable, ['datefrom']);
+const hasUnmatchedCurrentCards = (
+  previousCards: ResolvedCard[],
+  currentCards: ResolvedCard[],
+): boolean => {
+  const previousCounts = new Map<string, number>();
+  for (const card of previousCards) {
+    const key = cardContentKey(card);
+    previousCounts.set(key, (previousCounts.get(key) ?? 0) + 1);
+  }
 
-  return dateFrom === '' ? 'Нема наведен датум.' : dateFrom;
+  for (const card of currentCards) {
+    const key = cardContentKey(card);
+    const previousCount = previousCounts.get(key) ?? 0;
+    if (previousCount === 0) return true;
+
+    previousCounts.set(key, previousCount - 1);
+  }
+
+  // Unmatched old cards are removals/deactivations; keep those silent.
+  return false;
 };
 
 const parseListingSnapshot = (
@@ -321,110 +322,32 @@ export class EduPageStrategy implements ScraperStrategy {
       return { commit: () => {}, posts: [] };
     }
 
-    const posts = [
-      ...this.getTimetableChanges(
-        listing.r.regular.timetables,
+    const hasTimetableUpdates = this.hasTimetableUpdates(
+      listing.r.regular.timetables,
+      currentListingSnapshot.defaultNum,
+      previousListingSnapshot,
+    );
+    const hasCardUpdates =
+      previousCards !== undefined &&
+      previousListingSnapshot.ttNums.includes(
         currentListingSnapshot.defaultNum,
-        previousListingSnapshot,
-      ),
-      ...(previousCards === undefined ||
-      !previousListingSnapshot.ttNums.includes(
-        currentListingSnapshot.defaultNum,
-      )
-        ? []
-        : this.getCardChanges(
-            currentListingSnapshot.defaultNum,
-            previousCards,
-            currentCards,
-          )),
-    ];
+      ) &&
+      hasUnmatchedCurrentCards(previousCards, currentCards);
+    const posts =
+      hasTimetableUpdates || hasCardUpdates
+        ? [this.createUpdatePost(link, currentListingSnapshot.defaultNum)]
+        : [];
 
     return { commit, posts };
   }
 
-  private createCardChangePost(options: {
-    cardId: string;
-    currentCard: ResolvedCard | undefined;
-    previousCard: ResolvedCard | undefined;
-    ttNum: string;
-  }): PostData {
-    const { cardId, currentCard, previousCard, ttNum } = options;
-    const subject =
-      currentCard?.subject ?? previousCard?.subject ?? 'Непознат предмет';
-    const classes = stringifyValue(
-      currentCard?.classes ?? previousCard?.classes ?? [],
-    );
-    const timestamp = Date.now();
-
-    let container = new ContainerBuilder()
-      .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(
-          heading(truncateString(subject, 200), 3),
-        ),
-      )
-      .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(classes),
-      )
-      .addSeparatorComponents((separatorComponent) =>
-        separatorComponent.setSpacing(SeparatorSpacingSize.Large),
-      );
-
-    for (const field of CARD_FIELDS) {
-      const previousValue = previousCard?.[field] ?? '';
-      const currentValue = currentCard?.[field] ?? '';
-      const previousStr = stringifyValue(previousValue);
-      const currentStr = stringifyValue(currentValue);
-
-      if (previousStr === currentStr) {
-        continue;
-      }
-
-      container = container
-        .addTextDisplayComponents((textDisplayComponent) =>
-          textDisplayComponent.setContent(bold(FIELD_LABELS[field])),
-        )
-        .addTextDisplayComponents((textDisplayComponent) =>
-          textDisplayComponent.setContent(
-            `~~${truncateString(previousStr, 200)}~~ → ${truncateString(currentStr, 200)}`,
-          ),
-        )
-        .addSeparatorComponents((separatorComponent) =>
-          separatorComponent
-            .setSpacing(SeparatorSpacingSize.Small)
-            .setDivider(false),
-        );
-    }
-
+  private createUpdatePost(link: string, defaultNum: string): PostData {
     return {
-      component: container,
-      id: `change:${ttNum}:${cardId}:${timestamp}`,
+      component: new TextDisplayBuilder().setContent(
+        `Промени во распоредот се достапни на ${hyperlink('EduPage', link)}.`,
+      ),
+      id: `edupage-update:${defaultNum}:${Date.now()}`,
     };
-  }
-
-  private createTimetablePost(
-    title: string,
-    id: string,
-    timetable: ListingTimetable,
-  ): PostData {
-    const component = new ContainerBuilder()
-      .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(heading(title, 2)),
-      )
-      .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(
-          heading(truncateString(getDisplayName(timetable), 300), 3),
-        ),
-      )
-      .addSeparatorComponents((separatorComponent) =>
-        separatorComponent.setSpacing(SeparatorSpacingSize.Large),
-      )
-      .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(
-          `${bold('Од:')} ${formatTimetableDate(timetable)}`,
-        ),
-      );
-
-    return { component, id };
   }
 
   private async fetchListing(baseUrl: string): Promise<ListingResponse> {
@@ -475,81 +398,19 @@ export class EduPageStrategy implements ScraperStrategy {
     return TimetableResponseSchema.parse(await response.json());
   }
 
-  private getCardChanges(
-    ttNum: string,
-    previousCards: ResolvedCard[],
-    currentCards: ResolvedCard[],
-  ): PostData[] {
-    const currentCardMap = new Map(
-      currentCards.map((card) => [card.cardId, card]),
-    );
-    const previousCardMap = new Map(
-      previousCards.map((card) => [card.cardId, card]),
-    );
-    const cardIds = new Set([
-      ...previousCardMap.keys(),
-      ...currentCardMap.keys(),
-    ]);
-    return [...cardIds].flatMap((cardId) => {
-      const previousCard = previousCardMap.get(cardId);
-      const currentCard = currentCardMap.get(cardId);
-
-      if (
-        previousCard !== undefined &&
-        currentCard !== undefined &&
-        stableStringify(previousCard) === stableStringify(currentCard)
-      ) {
-        return [];
-      }
-
-      return [
-        this.createCardChangePost({ cardId, currentCard, previousCard, ttNum }),
-      ];
-    });
-  }
-
-  private getTimetableChanges(
+  private hasTimetableUpdates(
     timetables: ListingTimetable[],
     defaultNum: string,
     previousSnapshot: z.infer<typeof ListingSnapshotSchema>,
-  ): PostData[] {
+  ): boolean {
     const previousTtNums = new Set(previousSnapshot.ttNums);
-    const timetablePosts = timetables
-      .filter(({ tt_num: ttNum }) => !previousTtNums.has(ttNum))
-      .map((timetable) =>
-        this.createTimetablePost(
-          'Нов распоред на EduPage',
-          `new-tt:${timetable.tt_num}`,
-          timetable,
-        ),
-      );
-
-    const posts = [...timetablePosts];
-
-    if (defaultNum === previousSnapshot.defaultNum) {
-      return posts;
-    }
-
-    const defaultTimetable = timetables.find(
-      ({ tt_num: ttNum }) => ttNum === defaultNum,
+    const hasNewTimetable = timetables.some(
+      ({ tt_num: ttNum }) => !previousTtNums.has(ttNum),
     );
+    const hasNewActiveTimetable =
+      defaultNum !== '' && defaultNum !== previousSnapshot.defaultNum;
 
-    if (defaultTimetable !== undefined || defaultNum !== '') {
-      const activeTimetable = defaultTimetable ?? {
-        name: defaultNum,
-        // eslint-disable-next-line camelcase -- EduPage API field name
-        tt_num: defaultNum,
-      };
-      posts.push(
-        this.createTimetablePost(
-          'Нов активен распоред',
-          `default-tt:${activeTimetable.tt_num}`,
-          activeTimetable,
-        ),
-      );
-    }
-
-    return posts;
+    return hasNewTimetable || hasNewActiveTimetable;
   }
 
   private resolveCards(timetable: TimetableResponse): ResolvedCard[] {
