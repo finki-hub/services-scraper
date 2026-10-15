@@ -1,10 +1,10 @@
 import type { Cheerio, CheerioAPI } from 'cheerio';
-import type { Element } from 'domhandler';
 
 import * as cheerio from 'cheerio';
 import { ComponentType } from 'discord.js';
 import { afterEach, describe, expect, it, test, vi } from 'vitest';
 
+import type { CheerioElement as Element } from '../src/lib/Html.js';
 import type { PostData } from '../src/lib/Post.js';
 
 import sampleConfig from '../config/config.sample.json' with { type: 'json' };

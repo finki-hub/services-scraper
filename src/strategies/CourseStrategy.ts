@@ -8,9 +8,9 @@ import {
   hyperlink,
   TextDisplayBuilder,
 } from 'discord.js';
-import { type Element } from 'domhandler';
 import { Service } from 'finki-auth';
 
+import type { CheerioElement as Element } from '../lib/Html.js';
 import type { PostData } from '../lib/Post.js';
 
 import { truncateString } from '../utils/components.js';

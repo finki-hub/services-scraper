@@ -1,8 +1,8 @@
 import type { Cheerio } from 'cheerio';
-import type { Element } from 'domhandler';
 
 import { ContainerBuilder, heading, HeadingLevel, hyperlink } from 'discord.js';
 
+import type { CheerioElement as Element } from '../lib/Html.js';
 import type { PostData } from '../lib/Post.js';
 
 import { truncateString } from '../utils/components.js';
