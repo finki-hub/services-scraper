@@ -1,7 +1,7 @@
 import type { Cheerio } from 'cheerio';
 import type { Element } from 'domhandler';
 
-import { ContainerBuilder, heading, hyperlink } from 'discord.js';
+import { ContainerBuilder, heading, HeadingLevel, hyperlink } from 'discord.js';
 
 import type { PostData } from '../lib/Post.js';
 
@@ -30,7 +30,10 @@ export class ExampleStrategy extends HtmlStrategy {
     const component = new ContainerBuilder().addTextDisplayComponents(
       (textDisplayComponent) =>
         textDisplayComponent.setContent(
-          heading(link === null ? title : hyperlink(title, link), 2),
+          heading(
+            link === null ? title : hyperlink(title, link),
+            HeadingLevel.Two,
+          ),
         ),
     );
 

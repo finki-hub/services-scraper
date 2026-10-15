@@ -79,8 +79,7 @@ test('detaches materialized JSON from mutable builder output', () => {
   sourceComponent.content = 'after';
 
   const batchComponents = batch?.components[0] as
-    | undefined
-    | { components: Array<{ content: string }> };
+    undefined | { components: Array<{ content: string }> };
 
   expect(batchComponents?.components[0]?.content).toBe('before');
 });

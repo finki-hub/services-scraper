@@ -55,11 +55,7 @@ export type NotificationSentEvent = DeliveryCounts & {
   success: boolean;
 };
 export type RunPhase =
-  | 'commit'
-  | 'cookie_acquisition'
-  | 'cookie_validation'
-  | 'delivery'
-  | 'fetch';
+  'commit' | 'cookie_acquisition' | 'cookie_validation' | 'delivery' | 'fetch';
 
 export type RunReason =
   | 'commit_error'

@@ -97,8 +97,7 @@ const CARD_FIELDS: CardField[] = [
 
 const compareExactStrings = (left: string, right: string): number => {
   if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
+  return left > right ? 1 : 0;
 };
 
 const getCurrentSchoolYear = (): number => {
@@ -178,13 +177,9 @@ const getDisplayName = (row: RawRow | undefined): string => {
     .filter((part) => part !== '')
     .join(' ');
 
-  if (composedName !== '') {
-    return composedName;
-  }
-
-  return (
-    getStringValue(row, ['name', 'short', 'abbr', 'caption', 'text']) || '?'
-  );
+  return composedName === ''
+    ? getStringValue(row, ['name', 'short', 'abbr', 'caption', 'text']) || '?'
+    : composedName;
 };
 
 const resolveNames = (ids: string[], rows: Map<string, RawRow>): string[] =>
@@ -215,11 +210,9 @@ const cardContentKey = (card: ResolvedCard): string =>
   JSON.stringify(
     CARD_FIELDS.map((field) => {
       const value = card[field];
-      if (Array.isArray(value)) {
-        return [field, value.toSorted(compareExactStrings)];
-      }
-
-      return [field, value];
+      return Array.isArray(value)
+        ? [field, value.toSorted(compareExactStrings)]
+        : [field, value];
     }),
   );
 

@@ -4,6 +4,7 @@ import {
   bold,
   ContainerBuilder,
   heading,
+  HeadingLevel,
   hyperlink,
   TextDisplayBuilder,
 } from 'discord.js';
@@ -58,7 +59,9 @@ export class CourseStrategy extends HtmlStrategy {
           : bold(hyperlink(authorName, authorLink)),
       ),
       new TextDisplayBuilder().setContent(
-        link === null ? heading(title, 3) : heading(hyperlink(title, link), 3),
+        link === null
+          ? heading(title, HeadingLevel.Three)
+          : heading(hyperlink(title, link), HeadingLevel.Three),
       ),
       new TextDisplayBuilder().setContent(
         content === '' ? 'Нема опис.' : truncateString(content),

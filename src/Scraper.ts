@@ -153,10 +153,10 @@ export class Scraper {
         service: this.strategy.scraperService,
       }));
 
-    if (!isValidCookie) {
-      this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.cookieInvalid}`);
-      this.cookie = undefined;
-    }
+    if (isValidCookie) return;
+
+    this.logger.info(`[${this.scraperName}] ${LOG_MESSAGES.cookieInvalid}`);
+    this.cookie = undefined;
   }
 
   private captureDeliveryOutcome(run: ScrapeRunEvent, success: boolean): void {
@@ -197,13 +197,11 @@ export class Scraper {
   }
 
   private countPendingPosts(pending: PendingDelivery): number {
-    if (pending.batches.length === 0 && pending.cursor === 0) {
-      return pending.itemsNew;
-    }
-
-    return pending.batches
-      .slice(pending.cursor)
-      .reduce((total, batch) => total + batch.postCount, 0);
+    return pending.batches.length === 0 && pending.cursor === 0
+      ? pending.itemsNew
+      : pending.batches
+          .slice(pending.cursor)
+          .reduce((total, batch) => total + batch.postCount, 0);
   }
 
   private createPendingDelivery(

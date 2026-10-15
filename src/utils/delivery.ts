@@ -67,7 +67,7 @@ export const materializeDeliveryBatches = (
       currentCount = mentionCount;
     }
 
-    if (current.length === 0 && serializedMention !== undefined) {
+    if (serializedMention !== undefined && current.length === 0) {
       current.push(serializedMention);
     }
     current.push(post);

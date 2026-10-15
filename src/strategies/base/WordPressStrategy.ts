@@ -3,6 +3,7 @@ import {
   ContainerBuilder,
   escapeMarkdown,
   heading,
+  HeadingLevel,
   hyperlink,
   TextDisplayBuilder,
 } from 'discord.js';
@@ -129,8 +130,8 @@ export abstract class WordPressStrategy implements ScraperStrategy {
     const textDisplayComponents = [
       new TextDisplayBuilder().setContent(
         this.includeContent
-          ? heading(hyperlink(title, item.link), 3)
-          : heading(hyperlink(title, item.link), 2),
+          ? heading(hyperlink(title, item.link), HeadingLevel.Three)
+          : heading(hyperlink(title, item.link), HeadingLevel.Two),
       ),
     ];
 
@@ -209,7 +210,7 @@ export abstract class WordPressStrategy implements ScraperStrategy {
       }
     }
 
-    if (items.size === 0 && migrationCutoff === undefined) {
+    if (migrationCutoff === undefined && items.size === 0) {
       throw new Error(ERROR_MESSAGES.postsNotFound);
     }
 
