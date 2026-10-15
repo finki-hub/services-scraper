@@ -1,9 +1,9 @@
 import type { Cheerio, CheerioAPI } from 'cheerio';
 
 import * as cheerio from 'cheerio';
-import { type Element, isTag } from 'domhandler';
 import { CasAuthentication, type Service } from 'finki-auth';
 
+import type { CheerioElement as Element } from '../../lib/Html.js';
 import type { PostData } from '../../lib/Post.js';
 import type {
   ScraperStrategy,
@@ -123,7 +123,9 @@ export abstract class HtmlStrategy implements ScraperStrategy {
 
   private getPostsFromDom($: CheerioAPI, maxPosts: number): Element[] {
     const posts = $(this.postsSelector)
-      .filter((_, element) => isTag(element))
+      .filter((_, element): element is Element =>
+        ['script', 'style', 'tag'].includes(element.type),
+      )
       .toArray();
     const lastPosts = posts.slice(0, maxPosts);
 
