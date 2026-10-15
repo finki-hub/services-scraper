@@ -5,6 +5,7 @@ import {
   bold,
   ContainerBuilder,
   heading,
+  HeadingLevel,
   SeparatorSpacingSize,
 } from 'discord.js';
 import { Service } from 'finki-auth';
@@ -46,17 +47,16 @@ export class DiplomasStrategy extends HtmlStrategy {
 
     const $rows = $element.find('div.panel-body table tr');
 
-    const cellText = (rowIndex: number, colIndex = 2) =>
-      $rows.eq(rowIndex).find(`td:nth-of-type(${colIndex})`).text().trim() ||
-      '?';
+    const cellText = (rowIndex: number) =>
+      $rows.eq(rowIndex).find('td:nth-of-type(2)').text().trim() || '?';
 
-    const [rawIndex, rawStudent] = cellText(0)
+    const [rawIndex = '?', rawStudent = '?'] = cellText(0)
       .replaceAll(/\s+/gu, ' ')
       .split(' - ')
       .map((s) => s.trim());
 
-    const index = rawIndex ?? '?';
-    const student = truncateString(rawStudent ?? '?', 100);
+    const index = rawIndex;
+    const student = truncateString(rawStudent, 100);
 
     const mentor = truncateString(cellText(1), 100);
     const member1 = truncateString(cellText(2), 100);
@@ -72,7 +72,7 @@ export class DiplomasStrategy extends HtmlStrategy {
         separatorComponent.setSpacing(SeparatorSpacingSize.Large),
       )
       .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(heading(title, 3)),
+        textDisplayComponent.setContent(heading(title, HeadingLevel.Three)),
       )
       .addSeparatorComponents((separatorComponent) =>
         separatorComponent

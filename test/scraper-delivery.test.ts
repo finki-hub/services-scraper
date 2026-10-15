@@ -217,10 +217,11 @@ const setupRun = async (
   const commit = vi.fn<() => void>(() => {
     if (options.stage === 'commit') throw secretError();
   });
-  const getCookie = vi.fn<() => Promise<string>>(() => {
-    if (options.stage === 'acquire') return Promise.reject(secretError());
-    return Promise.resolve(sentinel);
-  });
+  const getCookie = vi.fn<() => Promise<string>>(() =>
+    options.stage === 'acquire'
+      ? Promise.reject(secretError())
+      : Promise.resolve(sentinel),
+  );
   const posts: StrategyResult['posts'] = Array.from(
     { length: options.count ?? 10 },
     (_, index) => ({

@@ -2,6 +2,7 @@ import type { Cheerio, CheerioAPI } from 'cheerio';
 import type { Element } from 'domhandler';
 
 import * as cheerio from 'cheerio';
+import { ComponentType } from 'discord.js';
 import { afterEach, describe, expect, it, test, vi } from 'vitest';
 
 import type { PostData } from '../src/lib/Post.js';
@@ -26,13 +27,9 @@ const collectStrings = (value: unknown): string[] => {
     return value.flatMap(collectStrings);
   }
 
-  if (typeof value === 'object' && value !== null) {
-    return Object.values(value as Record<string, unknown>).flatMap(
-      collectStrings,
-    );
-  }
-
-  return [];
+  return typeof value === 'object' && value !== null
+    ? Object.values(value as Record<string, unknown>).flatMap(collectStrings)
+    : [];
 };
 
 const loadElement = (html: string, selector: string): Cheerio<Element> => {
@@ -81,7 +78,9 @@ test('skips ID-less authenticated HTML without logging private content or changi
     }
     public getPostData(element: Cheerio<Element>): PostData {
       return {
-        component: { toJSON: () => ({ components: [], type: 17 }) },
+        component: {
+          toJSON: () => ({ components: [], type: ComponentType.Container }),
+        },
         id: this.getId(element),
       };
     }

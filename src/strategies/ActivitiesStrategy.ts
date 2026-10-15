@@ -4,6 +4,7 @@ import {
   bold,
   ContainerBuilder,
   heading,
+  HeadingLevel,
   hyperlink,
   SeparatorSpacingSize,
 } from 'discord.js';
@@ -54,7 +55,9 @@ export class ActivitiesStrategy extends HtmlStrategy {
     const component = new ContainerBuilder().addTextDisplayComponents(
       (textDisplayComponent) =>
         textDisplayComponent.setContent(
-          link === null ? heading(name, 2) : heading(hyperlink(name, link), 2),
+          link === null
+            ? heading(name, HeadingLevel.Two)
+            : heading(hyperlink(name, link), HeadingLevel.Two),
         ),
     );
 

@@ -4,6 +4,7 @@ import type { Element } from 'domhandler';
 import {
   ContainerBuilder,
   heading,
+  HeadingLevel,
   hyperlink,
   TextDisplayBuilder,
 } from 'discord.js';
@@ -40,7 +41,9 @@ export abstract class FinkiNewsStrategy extends HtmlStrategy {
 
     const textDisplayComponents = [
       new TextDisplayBuilder().setContent(
-        link === null ? heading(title, 3) : heading(hyperlink(title, link), 3),
+        link === null
+          ? heading(title, HeadingLevel.Three)
+          : heading(hyperlink(title, link), HeadingLevel.Three),
       ),
       new TextDisplayBuilder().setContent(
         content === '' ? 'Нема опис.' : truncateString(content),

@@ -43,11 +43,9 @@ const mockSnapshots = (
   listing: string,
   snapshots: Record<string, string> = {},
 ): void => {
-  cacheMocks.getSnapshot.mockImplementation((_scraperId, key) => {
-    if (key === LISTING_KEY) return listing;
-
-    return snapshots[key];
-  });
+  cacheMocks.getSnapshot.mockImplementation((_scraperId, key) =>
+    key === LISTING_KEY ? listing : snapshots[key],
+  );
 };
 
 const oldCard = (

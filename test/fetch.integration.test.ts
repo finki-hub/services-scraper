@@ -18,12 +18,9 @@ const INTEGRATION_TEST_DEADLINE_MS = 10_000;
 const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
 
 const deferred = <T = undefined>() => {
-  let resolveDeferred!: (value: PromiseLike<T> | T) => void;
-  const promise = new Promise<T>((resolve) => {
-    resolveDeferred = resolve;
-  });
+  const { promise, resolve } = Promise.withResolvers<T>();
 
-  return { promise, resolve: resolveDeferred };
+  return { promise, resolve };
 };
 
 const withinDeadline = async <T>(promise: Promise<T>): Promise<T> => {
@@ -54,9 +51,7 @@ const createLoopbackHandler =
       clientDisconnected.resolve(undefined);
     });
 
-    if (request.url === '/headers-stall') {
-      return;
-    }
+    if (request.url !== '/body-stall' && request.url !== '/success') return;
 
     if (request.url === '/body-stall') {
       response.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -65,22 +60,20 @@ const createLoopbackHandler =
       return;
     }
 
-    if (request.url === '/success') {
-      const chunks: Buffer[] = [];
-      request.on('data', (chunk: Buffer) => {
-        chunks.push(chunk);
-      });
-      request.on('end', () => {
-        response.writeHead(200, { 'Content-Type': 'application/json' });
-        response.end(
-          JSON.stringify({
-            body: Buffer.concat(chunks).toString(),
-            header: request.headers['x-test-header'],
-            method: request.method,
-          }),
-        );
-      });
-    }
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+    request.on('end', () => {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          body: Buffer.concat(chunks).toString(),
+          header: request.headers['x-test-header'],
+          method: request.method,
+        }),
+      );
+    });
   };
 
 const trackSocket =

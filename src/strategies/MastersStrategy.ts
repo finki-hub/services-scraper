@@ -5,6 +5,7 @@ import {
   bold,
   ContainerBuilder,
   heading,
+  HeadingLevel,
   SeparatorSpacingSize,
 } from 'discord.js';
 import { Service } from 'finki-auth';
@@ -42,8 +43,8 @@ export class MastersStrategy extends HtmlStrategy {
 
     const $rows = $element.find('table tbody tr');
 
-    const cellText = (row: number, col = 2) =>
-      $rows.eq(row).find(`td:nth-of-type(${col})`).text().trim() || '?';
+    const cellText = (row: number) =>
+      $rows.eq(row).find('td:nth-of-type(2)').text().trim() || '?';
 
     const $studentCell = $rows.eq(0).find('td:nth-of-type(2)');
 
@@ -68,7 +69,7 @@ export class MastersStrategy extends HtmlStrategy {
         separatorComponent.setSpacing(SeparatorSpacingSize.Large),
       )
       .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(heading(title, 3)),
+        textDisplayComponent.setContent(heading(title, HeadingLevel.Three)),
       )
       .addSeparatorComponents((separatorComponent) =>
         separatorComponent
