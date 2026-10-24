@@ -2,10 +2,10 @@ FROM --platform=${BUILDPLATFORM} node:26-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 COPY . ./
-RUN npm run build && npm prune --production
+RUN npm run build && npm prune --omit=dev --ignore-scripts
 
 FROM node:26-alpine AS final
 WORKDIR /app

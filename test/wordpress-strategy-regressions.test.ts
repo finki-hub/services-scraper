@@ -51,7 +51,7 @@ describe('WordPress strategy regressions', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       Response.json([
         createApiItem(44, 'newest', '1970-01-01T00:02:00'),
-        createApiItem(43, 'newer', '1970-01-01T00:01:50'),
+        createApiItem(43, 'newer'),
         createApiItem(42, 'at-cutoff', '1970-01-01T00:01:40'),
         createApiItem(41, 'older', '1970-01-01T00:01:30'),
       ]),
