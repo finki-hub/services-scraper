@@ -1,4 +1,3 @@
-import { hyperlink, TextDisplayBuilder } from 'discord.js';
 import { z } from 'zod';
 
 import type { PostData } from '../lib/Post.js';
@@ -9,6 +8,15 @@ import type {
 } from '../lib/Scraper.js';
 
 import { getSnapshot, setSnapshots } from '../utils/cache.js';
+import {
+  type ActivatedTimetable,
+  createTimetableUpdateComponent,
+  diffCards,
+  hasCardDiff,
+  type ResolvedCard,
+  ResolvedCardSchema,
+  type TimetableInfo,
+} from '../utils/edupage.js';
 import { fetchWithTimeout } from '../utils/fetch.js';
 
 const SPLIT_REGEX = /[,;]/u;
@@ -62,43 +70,12 @@ const ListingSnapshotSchema = z.object({
   ttNums: z.array(z.string()),
 });
 
-const ResolvedCardSchema = z.object({
-  cardId: z.string(),
-  classes: z.array(z.string()),
-  classrooms: z.array(z.string()),
-  day: z.string(),
-  durationPeriods: z.string(),
-  period: z.string(),
-  subject: z.string(),
-  teachers: z.array(z.string()),
-  weeks: z.string(),
-});
-
 const ResolvedCardsSnapshotSchema = z.array(ResolvedCardSchema);
 
-type CardField = Exclude<keyof ResolvedCard, 'cardId'>;
 type ListingResponse = z.infer<typeof ListingResponseSchema>;
 type ListingTimetable = z.infer<typeof ListingTimetableSchema>;
 type RawRow = z.infer<typeof RawRowSchema>;
-type ResolvedCard = z.infer<typeof ResolvedCardSchema>;
-
 type TimetableResponse = z.infer<typeof TimetableResponseSchema>;
-
-const CARD_FIELDS: CardField[] = [
-  'subject',
-  'teachers',
-  'classes',
-  'classrooms',
-  'day',
-  'period',
-  'weeks',
-  'durationPeriods',
-];
-
-const compareExactStrings = (left: string, right: string): number => {
-  if (left < right) return -1;
-  return left > right ? 1 : 0;
-};
 
 const getCurrentSchoolYear = (): number => {
   const now = Temporal.Now.plainDateISO();
@@ -206,37 +183,10 @@ const getPeriodText = (
   return name === '' ? fallback : name;
 };
 
-const cardContentKey = (card: ResolvedCard): string =>
-  JSON.stringify(
-    CARD_FIELDS.map((field) => {
-      const value = card[field];
-      return Array.isArray(value)
-        ? [field, value.toSorted(compareExactStrings)]
-        : [field, value];
-    }),
-  );
-
-const hasUnmatchedCurrentCards = (
-  previousCards: ResolvedCard[],
-  currentCards: ResolvedCard[],
-): boolean => {
-  const previousCounts = new Map<string, number>();
-  for (const card of previousCards) {
-    const key = cardContentKey(card);
-    previousCounts.set(key, (previousCounts.get(key) ?? 0) + 1);
-  }
-
-  for (const card of currentCards) {
-    const key = cardContentKey(card);
-    const previousCount = previousCounts.get(key) ?? 0;
-    if (previousCount === 0) return true;
-
-    previousCounts.set(key, previousCount - 1);
-  }
-
-  // Unmatched old cards are removals/deactivations; keep those silent.
-  return false;
-};
+const toTimetableInfo = (timetable: ListingTimetable): TimetableInfo => ({
+  dateFrom: getStringValue(timetable, ['datefrom']),
+  name: getStringValue(timetable, ['name', 'text']) || timetable.tt_num,
+});
 
 const parseListingSnapshot = (
   snapshot: string | undefined,
@@ -299,7 +249,9 @@ export class EduPageStrategy implements ScraperStrategy {
         : this.resolveCards(
             await this.fetchTimetable(link, currentListingSnapshot.defaultNum),
           );
-    const cardsKey = `cards:${currentListingSnapshot.defaultNum}`;
+    // Versioned because v1 snapshots lack lesson durations and would diff
+    // every card once; a missing v2 snapshot re-baselines silently instead.
+    const cardsKey = `cards:v2:${currentListingSnapshot.defaultNum}`;
     const previousCards = parseCardsSnapshot(getSnapshot(scraperId, cardsKey));
 
     const commit = () => {
@@ -315,32 +267,58 @@ export class EduPageStrategy implements ScraperStrategy {
       return { commit: () => {}, posts: [] };
     }
 
-    const hasTimetableUpdates = this.hasTimetableUpdates(
-      listing.r.regular.timetables,
-      currentListingSnapshot.defaultNum,
-      previousListingSnapshot,
+    const { defaultNum } = currentListingSnapshot;
+    const timetables = listing.r.regular.timetables;
+    const previousTtNums = new Set(previousListingSnapshot.ttNums);
+    const isSameActive = defaultNum === previousListingSnapshot.defaultNum;
+    const activeTimetable = timetables.find(
+      ({ tt_num: ttNum }) => ttNum === defaultNum,
     );
-    const hasCardUpdates =
-      previousCards !== undefined &&
-      previousListingSnapshot.ttNums.includes(
-        currentListingSnapshot.defaultNum,
-      ) &&
-      hasUnmatchedCurrentCards(previousCards, currentCards);
-    const posts =
-      hasTimetableUpdates || hasCardUpdates
-        ? [this.createUpdatePost(link, currentListingSnapshot.defaultNum)]
-        : [];
+    let activatedTimetable: ActivatedTimetable | undefined;
 
-    return { commit, posts };
-  }
+    if (defaultNum !== '' && !isSameActive) {
+      activatedTimetable = {
+        ...(activeTimetable === undefined
+          ? { dateFrom: '', name: defaultNum }
+          : toTimetableInfo(activeTimetable)),
+        isNew: !previousTtNums.has(defaultNum),
+      };
+    }
 
-  private createUpdatePost(link: string, defaultNum: string): PostData {
-    return {
-      component: new TextDisplayBuilder().setContent(
-        `Промени во распоредот се достапни на ${hyperlink('EduPage', link)}.`,
-      ),
+    // A newly published timetable that is also active is announced only once.
+    const publishedTimetables = timetables
+      .filter(
+        ({ tt_num: ttNum }) =>
+          !previousTtNums.has(ttNum) &&
+          (activatedTimetable === undefined || ttNum !== defaultNum),
+      )
+      .map(toTimetableInfo);
+    // Compare lessons only while the same timetable stays active; after a
+    // switch, an older snapshot of it could be months out of date.
+    const cardDiff =
+      previousCards !== undefined && isSameActive
+        ? diffCards(previousCards, currentCards)
+        : undefined;
+
+    if (
+      activatedTimetable === undefined &&
+      publishedTimetables.length === 0 &&
+      !hasCardDiff(cardDiff)
+    ) {
+      return { commit, posts: [] };
+    }
+
+    const post: PostData = {
+      component: createTimetableUpdateComponent({
+        activatedTimetable,
+        cardDiff,
+        link,
+        publishedTimetables,
+      }),
       id: `edupage-update:${defaultNum}:${Date.now()}`,
     };
+
+    return { commit, posts: [post] };
   }
 
   private async fetchListing(baseUrl: string): Promise<ListingResponse> {
@@ -389,21 +367,6 @@ export class EduPageStrategy implements ScraperStrategy {
     }
 
     return TimetableResponseSchema.parse(await response.json());
-  }
-
-  private hasTimetableUpdates(
-    timetables: ListingTimetable[],
-    defaultNum: string,
-    previousSnapshot: z.infer<typeof ListingSnapshotSchema>,
-  ): boolean {
-    const previousTtNums = new Set(previousSnapshot.ttNums);
-    const hasNewTimetable = timetables.some(
-      ({ tt_num: ttNum }) => !previousTtNums.has(ttNum),
-    );
-    const hasNewActiveTimetable =
-      defaultNum !== '' && defaultNum !== previousSnapshot.defaultNum;
-
-    return hasNewTimetable || hasNewActiveTimetable;
   }
 
   private resolveCards(timetable: TimetableResponse): ResolvedCard[] {
@@ -455,11 +418,17 @@ export class EduPageStrategy implements ScraperStrategy {
             classrooms,
           ),
           day: getDayName(getStringValue(card, ['days', 'day'])),
-          durationPeriods: getStringValue(card, [
-            'durationperiods',
-            'durationPeriods',
-            'duration',
-          ]),
+          durationPeriods:
+            getStringValue(card, [
+              'durationperiods',
+              'durationPeriods',
+              'duration',
+            ]) ||
+            getStringValue(lesson, [
+              'durationperiods',
+              'durationPeriods',
+              'duration',
+            ]),
           period: getPeriodText(periods.get(periodId), periodId),
           subject: getDisplayName(subject),
           teachers: resolveNames(
