@@ -183,12 +183,6 @@ const secretError = () =>
     cause: { config: { url: sentinel }, headers: { cookie: sentinel } },
   });
 
-type CapturedEvent = {
-  distinctId: string;
-  event: string;
-  properties: Record<string, unknown>;
-};
-
 const setupRun = async (
   options: {
     count?: number;
@@ -200,6 +194,12 @@ const setupRun = async (
     webhook?: boolean;
   } = {},
 ) => {
+  type CapturedEvent = {
+    distinctId: string;
+    event: string;
+    properties: Record<string, unknown>;
+  };
+
   vi.stubEnv('POSTHOG_KEY', 'fake-test-key');
   const events: CapturedEvent[] = [];
   const exceptions = vi.fn<(...args: unknown[]) => void>();
