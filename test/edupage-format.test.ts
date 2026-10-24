@@ -9,6 +9,15 @@ import {
 
 const LINK = 'https://finki.edupage.org';
 const MAX_MESSAGE_TEXT_LENGTH = 4_000;
+const WORST_CASE_NAME = '**Предмет** _'.repeat(100);
+const WORST_CASE_LIST = Array.from(
+  { length: 50 },
+  (_, index) => `~~Име ${index}`,
+);
+const WORST_CASE_CLASSROOMS = WORST_CASE_LIST.toReversed().map(
+  (item) => `${item}!`,
+);
+const WORST_CASE_TEACHERS = WORST_CASE_LIST.map((item) => `${item}?`);
 
 const card = (
   cardId: string,
@@ -115,12 +124,15 @@ describe('createTimetableUpdateComponent', () => {
     expect(content).toContain('Нови часови');
     expect(content).toContain('Отстранети часови');
   });
+});
 
+describe('createTimetableUpdateComponent formatting and limits', () => {
   it('adds the start date only when the timetable name has no date range', () => {
     const content = JSON.stringify(
       createTimetableUpdateComponent({
         activatedTimetable: {
           dateFrom: '2026-10-10',
+          isNew: false,
           name: 'raspored-zimski (10/10/2026 - 15/1/2027)',
         },
         cardDiff: undefined,
@@ -131,8 +143,28 @@ describe('createTimetableUpdateComponent', () => {
 
     expect(content).toContain('**Нов распоред:** raspored (од 10.10.2026)');
     expect(content).toContain(
-      '**Активен распоред:** raspored-zimski (10/10/2026 - 15/1/2027)"',
+      '**Активен распоред:** raspored-zimski (10/10/2026 - 15/1/2027)',
     );
+    expect(content).not.toContain(String.raw`(од 10.10.2026)\n**Активен`);
+  });
+
+  it('caps timetable announcements and keeps the active one first', () => {
+    const content = JSON.stringify(
+      createTimetableUpdateComponent({
+        activatedTimetable: { dateFrom: '', isNew: true, name: 'active' },
+        cardDiff: undefined,
+        link: LINK,
+        publishedTimetables: Array.from({ length: 25 }, (_, index) => ({
+          dateFrom: '',
+          name: `published-${index}`,
+        })),
+      }).toJSON(),
+    );
+
+    expect(content).toContain('**Нов активен распоред:** active');
+    expect(content).toContain('published-1');
+    expect(content).not.toContain('published-2');
+    expect(content).toContain('+ уште 23 распореди');
   });
 
   it('escapes Discord markdown in EduPage names', () => {
@@ -142,6 +174,32 @@ describe('createTimetableUpdateComponent', () => {
     });
 
     expect(content).toContain(String.raw`\\*\\*Bold\\*\\* \\_subject\\_`);
+  });
+
+  it('shortens long values without breaking Markdown pairs', () => {
+    const teachers = Array.from(
+      { length: 20 },
+      (_, index) => `Наставник ${index}`,
+    );
+    const content = createTimetableUpdateComponent({
+      activatedTimetable: undefined,
+      cardDiff: {
+        added: [card('*2', 'Math', { classrooms: ['Б 3.2'], teachers })],
+        removed: [card('*1', 'Math', { teachers: ['Ада'] })],
+      },
+      link: LINK,
+      publishedTimetables: [],
+    })
+      .toJSON()
+      .components.map((component) => JSON.stringify(component))
+      .join('\n');
+    const changeLine = content
+      .split(String.raw`\n`)
+      .find((line) => line.startsWith('- **Math**'));
+
+    expect(changeLine).toBeDefined();
+    expect(changeLine?.split('~~').length).toBe(5);
+    expect(changeLine?.split('**').length).toBe(3);
   });
 
   it('caps the detailed list and counts the remaining changes', () => {
@@ -156,8 +214,25 @@ describe('createTimetableUpdateComponent', () => {
     expect(content).toContain('+ уште 5 промени');
   });
 
+  it('keeps moderate paired updates detailed even when raw counts are high', () => {
+    const removed = Array.from({ length: 16 }, (_, index) =>
+      card(`*${index}`, `Subject ${String(index).padStart(2, '0')}`),
+    );
+    const added = removed.map((lesson, index) => ({
+      ...lesson,
+      cardId: `*${index + 100}`,
+      classrooms: ['Б 3.2'],
+    }));
+
+    const content = renderChanges({ added, removed });
+
+    expect(content).toContain('Изменети часови');
+    expect(content).toContain('+ уште 1 промени');
+    expect(content).not.toContain('значително ажуриран');
+  });
+
   it('summarizes large updates by counts and affected subjects', () => {
-    const removed = Array.from({ length: 20 }, (_, index) =>
+    const removed = Array.from({ length: 40 }, (_, index) =>
       card(`*${index}`, index % 2 === 0 ? 'Math' : 'Physics', {
         classes: [`Група ${index}`],
       }),
@@ -174,25 +249,43 @@ describe('createTimetableUpdateComponent', () => {
     });
 
     expect(content).toContain(
-      'Распоредот е значително ажуриран: 20 изменети, 1 нови часови.',
+      'Распоредот е значително ажуриран: 40 изменети, 1 нови часови.',
     );
     expect(content).toContain('**Засегнати предмети:** Math, Physics');
     expect(content).not.toContain('Изменети часови');
   });
 
-  it('stays within Discord text and component limits with long names', () => {
-    const longName = 'Предмет '.repeat(100);
-    const added = Array.from({ length: 30 }, (_, index) =>
+  it('stays within Discord text and component limits in the worst case', () => {
+    const longName = WORST_CASE_NAME;
+    const removed = Array.from({ length: 15 }, (_, index) =>
       card(`*${index}`, `${longName}${index}`, {
-        classes: ['Група '.repeat(50)],
-        teachers: ['Наставник '.repeat(50)],
+        classes: WORST_CASE_LIST,
+        classrooms: WORST_CASE_LIST,
+        teachers: WORST_CASE_LIST,
       }),
     );
+    const added = removed.map((lesson, index) => ({
+      ...lesson,
+      cardId: `*${index + 100}`,
+      classrooms: WORST_CASE_CLASSROOMS,
+      day: 'Петок',
+      durationPeriods: '3',
+      period: longName,
+      teachers: WORST_CASE_TEACHERS,
+      weeks: longName,
+    }));
     const component = createTimetableUpdateComponent({
-      activatedTimetable: { dateFrom: '2026-10-04', name: longName },
-      cardDiff: { added, removed: [] },
-      link: LINK,
-      publishedTimetables: [{ dateFrom: '2026-10-04', name: longName }],
+      activatedTimetable: {
+        dateFrom: '2026-10-04',
+        isNew: true,
+        name: longName,
+      },
+      cardDiff: { added: [...added, ...removed.slice(0, 1)], removed },
+      link: `${LINK}/${'x'.repeat(200)}`,
+      publishedTimetables: Array.from({ length: 30 }, () => ({
+        dateFrom: '2026-10-04',
+        name: longName,
+      })),
     }).toJSON();
 
     expect(getTextLength(component)).toBeLessThan(MAX_MESSAGE_TEXT_LENGTH);

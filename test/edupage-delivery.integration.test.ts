@@ -430,10 +430,10 @@ test('rolls back a failed SQLite commit, retries commit-only, then reports an un
     'Промени во распоредот',
   );
   expect(JSON.stringify(newTimetablePayloads)).toContain(
-    '**Нов распоред:** Timetable 29',
+    '**Нов активен распоред:** Timetable 29',
   );
-  expect(JSON.stringify(newTimetablePayloads)).toContain(
-    '**Активен распоред:** Timetable 29',
+  expect(JSON.stringify(newTimetablePayloads)).not.toContain(
+    '**Нов распоред:**',
   );
   expect(
     countComponentTree(parseMessageComponents(newTimetablePayloads[0]?.[0])),

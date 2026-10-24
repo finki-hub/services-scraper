@@ -354,11 +354,28 @@ describe('EduPageStrategy timetable changes', () => {
     const content = JSON.stringify(result.posts[0]?.component.toJSON());
 
     expect(content).toContain(
-      '**Нов распоред:** raspored-zimski-2026-27 (од 04.10.2026)',
+      '**Нов активен распоред:** raspored-zimski-2026-27 (од 04.10.2026)',
     );
-    expect(content).toContain(
-      '**Активен распоред:** raspored-zimski-2026-27 (од 04.10.2026)',
-    );
+    expect(content).not.toContain('**Нов распоред:**');
+  });
+
+  it('announces a switch back to an earlier timetable without diffing its stale lessons', async () => {
+    mockSnapshots(makeListingSnapshot('29', ['28', '29']), {
+      'cards:v2:28': JSON.stringify([oldCard('card-1', 'Math')]),
+      'cards:v2:29': '[]',
+    });
+
+    const result = await runStrategy('28', ['28', '29'], {
+      cards: [currentCardRow('card-1')],
+    });
+
+    expectSingleUpdatePost(result);
+
+    const content = JSON.stringify(result.posts[0]?.component.toJSON());
+
+    expect(content).toContain('**Активен распоред:** Timetable 28');
+    expect(content).not.toContain('Math');
+    expect(content).not.toContain('Нови часови');
   });
 
   it('notifies a newly listed timetable without a card snapshot', async () => {

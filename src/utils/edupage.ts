@@ -23,6 +23,10 @@ export const ResolvedCardSchema = z.object({
   weeks: z.string(),
 });
 
+export type ActivatedTimetable = TimetableInfo & {
+  isNew: boolean;
+};
+
 export type CardDiff = {
   added: ResolvedCard[];
   removed: ResolvedCard[];
@@ -36,7 +40,7 @@ export type TimetableInfo = {
 };
 
 export type TimetableUpdate = {
-  activatedTimetable: TimetableInfo | undefined;
+  activatedTimetable: ActivatedTimetable | undefined;
   cardDiff: CardDiff | undefined;
   link: string;
   publishedTimetables: TimetableInfo[];
@@ -91,11 +95,15 @@ const SUMMARY_COUNTS = [
   [REMOVED_LABEL, 'отстранети'],
 ] as const;
 
-const MAX_DETAILED_CARDS = 30;
+// These bounds keep the whole message well under Discord's 4000-character limit.
+const MAX_DETAILED_ENTRIES = 30;
 const MAX_LISTED_CHANGES = 15;
-const MAX_LINE_LENGTH = 200;
+const MAX_LISTED_TIMETABLES = 3;
+const MAX_LINE_LENGTH = 160;
+const MAX_NAME_LENGTH = 60;
+const MAX_VALUE_LENGTH = 32;
 const MAX_SUBJECTS_LENGTH = 1_000;
-const MAX_TIMETABLE_NAME_LENGTH = 200;
+const MAX_TIMETABLE_NAME_LENGTH = 100;
 const ISO_DATE_REGEX = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/u;
 // FINKI timetable names usually embed their range, e.g. "(10/10/2026 - 15/1/2027)".
 const NAME_DATE_REGEX = /\d{1,2}\/\d{1,2}/u;
@@ -117,11 +125,52 @@ const cardContentKey = (card: ResolvedCard): string =>
 const lessonKey = (card: ResolvedCard): string =>
   JSON.stringify([card.subject, sortedValues(card.classes)]);
 
+const appendToGroup = <T>(
+  groups: Map<string, T[]>,
+  key: string,
+  item: T,
+): void => {
+  const group = groups.get(key);
+
+  if (group === undefined) {
+    groups.set(key, [item]);
+  } else {
+    group.push(item);
+  }
+};
+
+// Escaping before truncating means a cut can only split an escape sequence,
+// never a ** or ~~ pair added around the value.
+const safeText = (text: string, maxLength: number): string =>
+  truncateString(escapeMarkdown(text), maxLength);
+
+// Always keeps the first part, then adds whole parts while they fit.
+const joinWithinLimit = (
+  parts: string[],
+  separator: string,
+  maxLength: number,
+): string => {
+  const [first = '', ...rest] = parts;
+  let text = first;
+
+  for (const part of rest) {
+    const next = `${text}${separator}${part}`;
+
+    if (next.length > maxLength) {
+      return `${text}${separator}...`;
+    }
+
+    text = next;
+  }
+
+  return text;
+};
+
 const formatFieldValue = (card: ResolvedCard, field: CardField): string => {
   const value = sortedValues(card[field]);
   const text = Array.isArray(value) ? value.join(', ') : value;
 
-  return text === '' ? '-' : escapeMarkdown(text);
+  return text === '' ? '-' : safeText(text, MAX_VALUE_LENGTH);
 };
 
 const formatDate = (date: string): string => {
@@ -133,14 +182,14 @@ const formatDate = (date: string): string => {
 };
 
 const formatLessonLabel = (card: ResolvedCard): string => {
-  const subject = bold(escapeMarkdown(card.subject));
+  const subject = bold(safeText(card.subject, MAX_NAME_LENGTH));
 
   return card.classes.length === 0
     ? subject
-    : `${subject} (${escapeMarkdown(card.classes.join(', '))})`;
+    : `${subject} (${safeText(card.classes.join(', '), MAX_VALUE_LENGTH)})`;
 };
 
-const formatCardDetails = (card: ResolvedCard): string => {
+const getCardDetails = (card: ResolvedCard): string[] => {
   const duration =
     card.durationPeriods === '' || card.durationPeriods === '1'
       ? ''
@@ -154,14 +203,13 @@ const formatCardDetails = (card: ResolvedCard): string => {
     card.teachers.join(', '),
   ]
     .filter((part) => part !== '')
-    .map((part) => escapeMarkdown(part))
-    .join(', ');
+    .map((part) => safeText(part, MAX_VALUE_LENGTH));
 };
 
-const formatChangedFields = (
+const getChangedFields = (
   previousCard: ResolvedCard,
   currentCard: ResolvedCard,
-): string =>
+): string[] =>
   CHANGEABLE_FIELDS.map((field) => {
     const previousValue = formatFieldValue(previousCard, field);
     const currentValue = formatFieldValue(currentCard, field);
@@ -169,14 +217,25 @@ const formatChangedFields = (
     return previousValue === currentValue
       ? ''
       : `${FIELD_LABELS[field]}: ~~${previousValue}~~ → ${currentValue}`;
-  })
-    .filter((part) => part !== '')
-    .join('; ');
+  }).filter((part) => part !== '');
+
+const formatEntryLine = (
+  card: ResolvedCard,
+  parts: string[],
+  separator: string,
+): string => {
+  const label = formatLessonLabel(card);
+  const details = joinWithinLimit(
+    parts,
+    separator,
+    MAX_LINE_LENGTH - label.length,
+  );
+
+  return `${label}: ${details}`;
+};
 
 const formatTimetable = (title: string, timetable: TimetableInfo): string => {
-  const name = escapeMarkdown(
-    truncateString(timetable.name, MAX_TIMETABLE_NAME_LENGTH),
-  );
+  const name = safeText(timetable.name, MAX_TIMETABLE_NAME_LENGTH);
   const date =
     timetable.dateFrom === '' || NAME_DATE_REGEX.test(timetable.name)
       ? ''
@@ -185,28 +244,66 @@ const formatTimetable = (title: string, timetable: TimetableInfo): string => {
   return `${bold(title)} ${name}${date}`;
 };
 
+const formatTimetableLines = (
+  publishedTimetables: TimetableInfo[],
+  activatedTimetable: ActivatedTimetable | undefined,
+): string[] => {
+  const activeTitle = activatedTimetable?.isNew
+    ? 'Нов активен распоред:'
+    : 'Активен распоред:';
+  const lines = [
+    ...(activatedTimetable === undefined
+      ? []
+      : [formatTimetable(activeTitle, activatedTimetable)]),
+    ...publishedTimetables.map((timetable) =>
+      formatTimetable('Нов распоред:', timetable),
+    ),
+  ];
+  const hiddenCount = lines.length - MAX_LISTED_TIMETABLES;
+
+  return hiddenCount > 0
+    ? [
+        ...lines.slice(0, MAX_LISTED_TIMETABLES),
+        `+ уште ${hiddenCount} распореди`,
+      ]
+    : lines;
+};
+
 const groupByLesson = (cards: ResolvedCard[]): Map<string, ResolvedCard[]> => {
   const groups = new Map<string, ResolvedCard[]>();
 
   for (const card of cards) {
-    const key = lessonKey(card);
-    groups.set(key, [...(groups.get(key) ?? []), card]);
+    appendToGroup(groups, lessonKey(card), card);
   }
 
   return groups;
 };
 
-const compareCards = (left: ResolvedCard, right: ResolvedCard): number =>
-  NAME_COLLATOR.compare(formatLessonLabel(left), formatLessonLabel(right)) ||
-  NAME_COLLATOR.compare(formatCardDetails(left), formatCardDetails(right));
+// Sort keys are computed once per item instead of on every comparison.
+const sortByCard = <T>(items: T[], getCard: (item: T) => ResolvedCard): T[] =>
+  items
+    .map((item) => {
+      const card = getCard(item);
+
+      return {
+        classes: card.classes.join(', '),
+        details: getCardDetails(card).join(', '),
+        item,
+        subject: card.subject,
+      };
+    })
+    .toSorted(
+      (left, right) =>
+        NAME_COLLATOR.compare(left.subject, right.subject) ||
+        NAME_COLLATOR.compare(left.classes, right.classes) ||
+        NAME_COLLATOR.compare(left.details, right.details),
+    )
+    .map(({ item }) => item);
 
 const toEntries = (cards: ResolvedCard[], label: string): ChangeEntry[] =>
-  cards.toSorted(compareCards).map((card) => ({
+  sortByCard(cards, (card) => card).map((card) => ({
     label,
-    text: truncateString(
-      `${formatLessonLabel(card)}: ${formatCardDetails(card)}`,
-      MAX_LINE_LENGTH,
-    ),
+    text: formatEntryLine(card, getCardDetails(card), ', '),
   }));
 
 const getChangeEntries = ({ added, removed }: CardDiff): ChangeEntry[] => {
@@ -239,15 +336,17 @@ const getChangeEntries = ({ added, removed }: CardDiff): ChangeEntry[] => {
     if (!addedGroups.has(key)) unpairedRemoved.push(...removedCards);
   }
 
-  const changedEntries = changed
-    .toSorted(([, left], [, right]) => compareCards(left, right))
-    .map(([previousCard, currentCard]) => ({
-      label: CHANGED_LABEL,
-      text: truncateString(
-        `${formatLessonLabel(currentCard)}: ${formatChangedFields(previousCard, currentCard)}`,
-        MAX_LINE_LENGTH,
-      ),
-    }));
+  const changedEntries = sortByCard(
+    changed,
+    ([, currentCard]) => currentCard,
+  ).map(([previousCard, currentCard]) => ({
+    label: CHANGED_LABEL,
+    text: formatEntryLine(
+      currentCard,
+      getChangedFields(previousCard, currentCard),
+      '; ',
+    ),
+  }));
 
   return [
     ...changedEntries,
@@ -256,8 +355,7 @@ const getChangeEntries = ({ added, removed }: CardDiff): ChangeEntry[] => {
   ];
 };
 
-const formatDetailedChanges = (diff: CardDiff): string => {
-  const entries = getChangeEntries(diff);
+const formatDetailedChanges = (entries: ChangeEntry[]): string => {
   const lines: string[] = [];
   let currentLabel = '';
 
@@ -279,9 +377,10 @@ const formatDetailedChanges = (diff: CardDiff): string => {
   return lines.join('\n');
 };
 
-const formatSummarizedChanges = (diff: CardDiff): string => {
-  const { added, removed } = diff;
-  const entries = getChangeEntries(diff);
+const formatSummarizedChanges = (
+  { added, removed }: CardDiff,
+  entries: ChangeEntry[],
+): string => {
   const counts = SUMMARY_COUNTS.map(([label, word]) => ({
     count: entries.filter((entry) => entry.label === label).length,
     word,
@@ -292,11 +391,12 @@ const formatSummarizedChanges = (diff: CardDiff): string => {
     ...new Set([...added, ...removed].map((card) => card.subject)),
   ]
     .toSorted((left, right) => NAME_COLLATOR.compare(left, right))
-    .map((subject) => escapeMarkdown(subject));
+    .map((subject) => safeText(subject, MAX_NAME_LENGTH));
+  const subjectList = joinWithinLimit(subjects, ', ', MAX_SUBJECTS_LENGTH);
 
   return [
     `Распоредот е значително ажуриран: ${counts.join(', ')} часови.`,
-    `${bold('Засегнати предмети:')} ${truncateString(subjects.join(', '), MAX_SUBJECTS_LENGTH)}`,
+    `${bold('Засегнати предмети:')} ${subjectList}`,
   ].join('\n');
 };
 
@@ -307,8 +407,7 @@ export const diffCards = (
   const unmatchedPrevious = new Map<string, ResolvedCard[]>();
 
   for (const card of previousCards) {
-    const key = cardContentKey(card);
-    unmatchedPrevious.set(key, [...(unmatchedPrevious.get(key) ?? []), card]);
+    appendToGroup(unmatchedPrevious, cardContentKey(card), card);
   }
 
   const added: ResolvedCard[] = [];
@@ -335,14 +434,10 @@ export const createTimetableUpdateComponent = ({
   link,
   publishedTimetables,
 }: TimetableUpdate): ContainerBuilder => {
-  const timetableLines = [
-    ...publishedTimetables.map((timetable) =>
-      formatTimetable('Нов распоред:', timetable),
-    ),
-    ...(activatedTimetable === undefined
-      ? []
-      : [formatTimetable('Активен распоред:', activatedTimetable)]),
-  ];
+  const timetableLines = formatTimetableLines(
+    publishedTimetables,
+    activatedTimetable,
+  );
 
   let container = new ContainerBuilder().addTextDisplayComponents(
     (textDisplayComponent) =>
@@ -358,10 +453,11 @@ export const createTimetableUpdateComponent = ({
   }
 
   if (hasCardDiff(cardDiff)) {
+    const entries = getChangeEntries(cardDiff);
     const changes =
-      cardDiff.added.length + cardDiff.removed.length > MAX_DETAILED_CARDS
-        ? formatSummarizedChanges(cardDiff)
-        : formatDetailedChanges(cardDiff);
+      entries.length > MAX_DETAILED_ENTRIES
+        ? formatSummarizedChanges(cardDiff, entries)
+        : formatDetailedChanges(entries);
 
     container = container
       .addSeparatorComponents((separatorComponent) =>

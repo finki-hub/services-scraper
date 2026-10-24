@@ -9,6 +9,7 @@ import type {
 
 import { getSnapshot, setSnapshots } from '../utils/cache.js';
 import {
+  type ActivatedTimetable,
   createTimetableUpdateComponent,
   diffCards,
   hasCardDiff,
@@ -269,25 +270,33 @@ export class EduPageStrategy implements ScraperStrategy {
     const { defaultNum } = currentListingSnapshot;
     const timetables = listing.r.regular.timetables;
     const previousTtNums = new Set(previousListingSnapshot.ttNums);
-    const publishedTimetables = timetables
-      .filter(({ tt_num: ttNum }) => !previousTtNums.has(ttNum))
-      .map(toTimetableInfo);
+    const isSameActive = defaultNum === previousListingSnapshot.defaultNum;
     const activeTimetable = timetables.find(
       ({ tt_num: ttNum }) => ttNum === defaultNum,
     );
-    const isNewlyActive =
-      defaultNum !== '' && defaultNum !== previousListingSnapshot.defaultNum;
-    let activatedTimetable: TimetableInfo | undefined;
+    let activatedTimetable: ActivatedTimetable | undefined;
 
-    if (isNewlyActive) {
-      activatedTimetable =
-        activeTimetable === undefined
+    if (defaultNum !== '' && !isSameActive) {
+      activatedTimetable = {
+        ...(activeTimetable === undefined
           ? { dateFrom: '', name: defaultNum }
-          : toTimetableInfo(activeTimetable);
+          : toTimetableInfo(activeTimetable)),
+        isNew: !previousTtNums.has(defaultNum),
+      };
     }
-    // Without a baseline for the active timetable there is nothing to compare.
+
+    // A newly published timetable that is also active is announced only once.
+    const publishedTimetables = timetables
+      .filter(
+        ({ tt_num: ttNum }) =>
+          !previousTtNums.has(ttNum) &&
+          (activatedTimetable === undefined || ttNum !== defaultNum),
+      )
+      .map(toTimetableInfo);
+    // Compare lessons only while the same timetable stays active; after a
+    // switch, an older snapshot of it could be months out of date.
     const cardDiff =
-      previousCards !== undefined && previousTtNums.has(defaultNum)
+      previousCards !== undefined && isSameActive
         ? diffCards(previousCards, currentCards)
         : undefined;
 
