@@ -210,14 +210,16 @@ describe('EduPageStrategy baselines and request errors', () => {
     expect(cacheMocks.setSnapshots).toHaveBeenCalledExactlyOnceWith(
       SCRAPER_ID,
       {
-        'cards:29': '[]',
+        'cards:v2:29': '[]',
         listing: makeListingSnapshot('29', ['29']),
       },
     );
   });
 
   it('treats malformed persisted cards JSON as a missing card baseline', async () => {
-    mockSnapshots(makeListingSnapshot('28', ['28']), { 'cards:28': '{broken' });
+    mockSnapshots(makeListingSnapshot('28', ['28']), {
+      'cards:v2:28': '{broken',
+    });
 
     const result = await runStrategy('28', ['28'], {
       cards: [
@@ -304,17 +306,63 @@ describe('EduPageStrategy timetable changes', () => {
 
     expect(cacheMocks.setSnapshots).toHaveBeenCalledExactlyOnceWith(
       SCRAPER_ID,
-      { 'cards:29': '[]', listing: makeListingSnapshot('29', ['28', '29']) },
+      { 'cards:v2:29': '[]', listing: makeListingSnapshot('29', ['28', '29']) },
     );
     expect(cacheMocks.setSnapshot).toHaveBeenCalledWith(
       SCRAPER_ID,
-      'cards:29',
+      'cards:v2:29',
       '[]',
     );
   });
 
+  it('names new and activated timetables with their start dates', async () => {
+    mockSnapshots(makeListingSnapshot('28', ['28']));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          r: {
+            regular: {
+              // eslint-disable-next-line camelcase -- EduPage API field name
+              default_num: '29',
+              timetables: [
+                // eslint-disable-next-line camelcase -- EduPage API field name
+                { tt_num: '28' },
+                {
+                  datefrom: '2026-10-04',
+                  text: 'raspored-zimski-2026-27',
+                  // eslint-disable-next-line camelcase -- EduPage API field name
+                  tt_num: '29',
+                },
+              ],
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(timetableResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new EduPageStrategy().getChanges({
+      cookie: undefined,
+      link: BASE_URL,
+      maxPosts: 20,
+      scraperId: SCRAPER_ID,
+    });
+
+    expectSingleUpdatePost(result);
+
+    const content = JSON.stringify(result.posts[0]?.component.toJSON());
+
+    expect(content).toContain(
+      '**Нов распоред:** raspored-zimski-2026-27 (од 04.10.2026)',
+    );
+    expect(content).toContain(
+      '**Активен распоред:** raspored-zimski-2026-27 (од 04.10.2026)',
+    );
+  });
+
   it('notifies a newly listed timetable without a card snapshot', async () => {
-    mockSnapshots(makeListingSnapshot('28', ['28']), { 'cards:28': '[]' });
+    mockSnapshots(makeListingSnapshot('28', ['28']), { 'cards:v2:28': '[]' });
 
     const result = await runStrategy('28', ['28', '29']);
 
@@ -325,7 +373,7 @@ describe('EduPageStrategy timetable changes', () => {
 
   it('does not notify removed timetables alongside a new active timetable', async () => {
     mockSnapshots(makeListingSnapshot('28', ['27', '28']), {
-      'cards:28': '[]',
+      'cards:v2:28': '[]',
     });
 
     const result = await runStrategy('29', ['29']);
@@ -368,7 +416,7 @@ describe('EduPageStrategy timetable changes', () => {
   });
 
   it('keeps deactivation silent when the active timetable remains listed', async () => {
-    mockSnapshots(makeListingSnapshot('28', ['28']), { 'cards:': '[]' });
+    mockSnapshots(makeListingSnapshot('28', ['28']), { 'cards:v2:': '[]' });
 
     const result = await runStrategy('', ['28']);
 
@@ -383,7 +431,7 @@ describe('EduPageStrategy timetable changes', () => {
     cacheMocks.getSnapshot.mockImplementation((_scraperId, key) => {
       if (key === LISTING_KEY) return listingSnapshot;
 
-      return key === 'cards:29' ? '[]' : undefined;
+      return key === 'cards:v2:29' ? '[]' : undefined;
     });
     cacheMocks.setSnapshot.mockImplementation((_scraperId, key, value) => {
       if (key === 'listing') listingSnapshot = value;
@@ -404,7 +452,7 @@ describe('EduPageStrategy timetable changes', () => {
   });
 
   it('keeps unchanged listing and cards silent', async () => {
-    mockSnapshots(makeListingSnapshot('28', ['28']), { 'cards:28': '[]' });
+    mockSnapshots(makeListingSnapshot('28', ['28']), { 'cards:v2:28': '[]' });
 
     const result = await runStrategy('28', ['28']);
 
@@ -413,9 +461,9 @@ describe('EduPageStrategy timetable changes', () => {
 });
 
 describe('EduPageStrategy semantic card changes', () => {
-  it('reports semantic additions/edits once and keeps card removals silent', async () => {
+  it('reports added and removed lessons in one detailed update', async () => {
     mockSnapshots(makeListingSnapshot('28', ['28']), {
-      'cards:28': JSON.stringify([
+      'cards:v2:28': JSON.stringify([
         oldCard('card-1', 'Math'),
         oldCard('card-2', 'History'),
       ]),
@@ -436,9 +484,51 @@ describe('EduPageStrategy semantic card changes', () => {
 
     expectSingleUpdatePost(result);
 
-    expect(JSON.stringify(result.posts[0]?.component.toJSON())).not.toContain(
-      'Math',
-    );
+    const content = JSON.stringify(result.posts[0]?.component.toJSON());
+
+    expect(content).toContain('Нови часови');
+    expect(content).toContain('**Science**');
+    expect(content).toContain('Отстранети часови');
+    expect(content).toContain('**Math**');
+    expect(content).toContain('**History**');
+  });
+
+  it('ignores v1 card snapshots and re-baselines silently', async () => {
+    cacheMocks.getSnapshot.mockImplementation((_scraperId, key) => {
+      if (key === LISTING_KEY) return makeListingSnapshot('28', ['28']);
+
+      return key === 'cards:28'
+        ? JSON.stringify([oldCard('card-1', 'Math')])
+        : undefined;
+    });
+
+    const result = await runStrategy('28', ['28'], {
+      cards: [currentCardRow('card-1')],
+    });
+
+    expect(result.posts).toStrictEqual([]);
+  });
+
+  it('reads lesson durations when cards do not carry them', async () => {
+    mockSnapshots(makeListingSnapshot('28', ['28']));
+
+    const result = await runStrategy('28', ['28'], {
+      cards: [{ days: '1000000', id: '*1', lessonid: 'lesson-1' }],
+      lookupRows: {
+        lessons: [
+          { durationperiods: '2', id: 'lesson-1', subjectid: 'subject-1' },
+        ],
+      },
+    });
+
+    result.commit();
+
+    const savedCards =
+      cacheMocks.setSnapshots.mock.calls[0]?.[1]['cards:v2:28'];
+
+    expect(JSON.parse(savedCards ?? '[]')).toMatchObject([
+      { durationPeriods: '2' },
+    ]);
   });
 
   it('silences ID renumbering, card reordering, and duplicate-preserving semantic matches', async () => {
@@ -448,7 +538,7 @@ describe('EduPageStrategy semantic card changes', () => {
       oldCard('old-c', 'Science', { weeks: 'week-b' }),
     ];
     mockSnapshots(makeListingSnapshot('28', ['28']), {
-      'cards:28': JSON.stringify(previousCards),
+      'cards:v2:28': JSON.stringify(previousCards),
     });
 
     const result = await runStrategy('28', ['28'], {
@@ -466,7 +556,7 @@ describe('EduPageStrategy semantic card changes', () => {
     expect(cacheMocks.setSnapshots).toHaveBeenCalledExactlyOnceWith(
       SCRAPER_ID,
       {
-        'cards:28': JSON.stringify([
+        'cards:v2:28': JSON.stringify([
           oldCard('new-a', 'Science', { weeks: 'week-a' }),
           oldCard('new-b', 'Science', { weeks: 'week-a' }),
           oldCard('new-c', 'Science', { weeks: 'week-b' }),
@@ -482,7 +572,7 @@ describe('EduPageStrategy semantic list and aggregate changes', () => {
     const composed = 'é';
     const decomposed = 'e\u{301}';
     mockSnapshots(makeListingSnapshot('28', ['28']), {
-      'cards:28': JSON.stringify([
+      'cards:v2:28': JSON.stringify([
         oldCard('old-card', 'Science', {
           classes: [composed, decomposed],
           classrooms: ['Room A', 'Room B'],
@@ -519,14 +609,17 @@ describe('EduPageStrategy semantic list and aggregate changes', () => {
     });
 
     expect(result.posts).toStrictEqual([]);
-    expect(cacheMocks.getSnapshot).toHaveBeenCalledWith(SCRAPER_ID, 'cards:28');
+    expect(cacheMocks.getSnapshot).toHaveBeenCalledWith(
+      SCRAPER_ID,
+      'cards:v2:28',
+    );
 
     result.commit();
 
     expect(cacheMocks.setSnapshots).toHaveBeenCalledExactlyOnceWith(
       SCRAPER_ID,
       {
-        'cards:28': JSON.stringify([
+        'cards:v2:28': JSON.stringify([
           oldCard('new-card', 'Science', {
             classes: [decomposed, composed],
             classrooms: ['Room B', 'Room A'],
@@ -538,9 +631,9 @@ describe('EduPageStrategy semantic list and aggregate changes', () => {
     );
   });
 
-  it('notifies once for a genuine current card addition while silently dropping removed cards', async () => {
+  it('shows a single replaced lesson as a field change', async () => {
     mockSnapshots(makeListingSnapshot('28', ['28']), {
-      'cards:28': JSON.stringify([
+      'cards:v2:28': JSON.stringify([
         oldCard('old-a', 'Science', { weeks: 'week-a' }),
         oldCard('old-b', 'Science', { weeks: 'week-b' }),
       ]),
@@ -556,13 +649,20 @@ describe('EduPageStrategy semantic list and aggregate changes', () => {
     expect(result.posts).toHaveLength(1);
 
     expectSingleUpdatePost(result);
+
+    const content = JSON.stringify(result.posts[0]?.component.toJSON());
+
+    expect(content).toContain('Изменети часови');
+    expect(content).toContain('Недели: ~~week-b~~ → week-c');
+    expect(content).not.toContain('Нови часови');
+    expect(content).not.toContain('Отстранети часови');
   });
 
-  it('commits a pure card removal silently', async () => {
+  it('reports a pure card removal and commits only after delivery', async () => {
     mockSnapshots(makeListingSnapshot('28', ['28']), {
-      'cards:28': JSON.stringify([
+      'cards:v2:28': JSON.stringify([
         oldCard('old-a', 'Science', { weeks: 'week-a' }),
-        oldCard('old-b', 'Science', { weeks: 'week-b' }),
+        oldCard('old-b', 'Math', { weeks: 'week-b' }),
       ]),
     });
 
@@ -570,14 +670,20 @@ describe('EduPageStrategy semantic list and aggregate changes', () => {
       cards: [currentCardRow('new-a', 'week-a')],
     });
 
-    expect(result.posts).toStrictEqual([]);
+    expect(result.posts).toHaveLength(1);
+
+    const content = JSON.stringify(result.posts[0]?.component.toJSON());
+
+    expect(content).toContain('Отстранети часови');
+    expect(content).toContain('**Math**');
+    expect(cacheMocks.setSnapshots).not.toHaveBeenCalled();
 
     result.commit();
 
     expect(cacheMocks.setSnapshots).toHaveBeenCalledExactlyOnceWith(
       SCRAPER_ID,
       {
-        'cards:28': JSON.stringify([
+        'cards:v2:28': JSON.stringify([
           oldCard('new-a', 'Science', { weeks: 'week-a' }),
         ]),
         listing: makeListingSnapshot('28', ['28']),
@@ -587,7 +693,7 @@ describe('EduPageStrategy semantic list and aggregate changes', () => {
 
   it('combines timetable listing and card changes into a single update', async () => {
     mockSnapshots(makeListingSnapshot('28', ['28']), {
-      'cards:28': JSON.stringify([oldCard('card-1', 'Old subject')]),
+      'cards:v2:28': JSON.stringify([oldCard('card-1', 'Old subject')]),
     });
 
     const result = await runStrategy('28', ['28', '29'], {
@@ -615,7 +721,7 @@ describe('EduPageStrategy semantic list and aggregate changes', () => {
       return currentCardRow(`card-${index}`, weeks);
     });
     mockSnapshots(makeListingSnapshot('28', ['28']), {
-      'cards:28': JSON.stringify(previousCards),
+      'cards:v2:28': JSON.stringify(previousCards),
     });
 
     const result = await runStrategy('28', ['28'], { cards: currentCards });
@@ -624,12 +730,10 @@ describe('EduPageStrategy semantic list and aggregate changes', () => {
 
     expectSingleUpdatePost(result);
 
-    expect(JSON.stringify(result.posts[0]?.component.toJSON())).not.toContain(
-      'common-',
-    );
-    expect(JSON.stringify(result.posts[0]?.component.toJSON())).not.toContain(
-      'removed-',
-    );
+    const content = JSON.stringify(result.posts[0]?.component.toJSON());
+
+    expect(content).not.toContain('common-');
+    expect(content).toContain('+ уште 2 промени');
   });
 });
 
@@ -666,7 +770,7 @@ describe('EduPageStrategy inactive timetable behavior', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(cacheMocks.setSnapshot).toHaveBeenCalledWith(
       SCRAPER_ID,
-      'cards:',
+      'cards:v2:',
       '[]',
     );
   });
@@ -677,7 +781,7 @@ describe('EduPageStrategy inactive timetable behavior', () => {
         return JSON.stringify({ defaultNum: '28', ttNums: ['28'] });
       }
 
-      return key === 'cards:' ? '[]' : undefined;
+      return key === 'cards:v2:' ? '[]' : undefined;
     });
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
@@ -714,7 +818,7 @@ describe('EduPageStrategy inactive timetable behavior', () => {
     );
     expect(cacheMocks.setSnapshot).toHaveBeenCalledWith(
       SCRAPER_ID,
-      'cards:',
+      'cards:v2:',
       '[]',
     );
   });

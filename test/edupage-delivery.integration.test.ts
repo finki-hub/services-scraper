@@ -34,6 +34,7 @@ type SendMock = ReturnType<
 >;
 
 const scraperId = 'edupage-delivery-integration';
+const cardsKey = 'cards:v2:28';
 const stopLoopMessage = 'stop integration scraper';
 const stopLoopRegex = /stop integration scraper/u;
 const roleId = '123456789012345678';
@@ -317,7 +318,7 @@ test('baselines silently, retries one 225-card summary, then ignores unchanged c
 
   await expectOneScrapeCycle(current.scraper);
   const baselineListing = current.cache.getSnapshot(scraperId, 'listing');
-  const baselineCards = current.cache.getSnapshot(scraperId, 'cards:28');
+  const baselineCards = current.cache.getSnapshot(scraperId, cardsKey);
 
   expect(baselineListing).toBeDefined();
   expect(baselineCards).toBeDefined();
@@ -331,16 +332,22 @@ test('baselines silently, retries one 225-card summary, then ignores unchanged c
   expect(current.send).toHaveBeenCalledOnce();
   expect(current.networkRequests()).toBe(4);
   expect(current.cache.getSnapshot(scraperId, 'listing')).toBe(baselineListing);
-  expect(current.cache.getSnapshot(scraperId, 'cards:28')).toBe(baselineCards);
+  expect(current.cache.getSnapshot(scraperId, cardsKey)).toBe(baselineCards);
   expect(current.errorSend).toHaveBeenCalledOnce();
 
   const firstPayload = current.send.mock.calls[0]?.[0];
   const firstComponents = parseMessageComponents(firstPayload);
 
-  expect(countComponentTree(firstComponents)).toBe(2);
+  expect(countComponentTree(firstComponents)).toBe(7);
   expect(countComponentTree(firstComponents)).toBeLessThanOrEqual(40);
   expect(JSON.stringify(firstComponents)).toContain(`<@&${roleId}>`);
   expect(JSON.stringify(firstComponents)).toContain('Промени во распоредот');
+  expect(JSON.stringify(firstComponents)).toContain(
+    'Распоредот е значително ажуриран: 225 нови, 225 отстранети часови.',
+  );
+  expect(JSON.stringify(firstComponents)).toContain(
+    '**Засегнати предмети:** Advanced Mathematics, Mathematics',
+  );
   expect(JSON.stringify(firstComponents)).toMatch(loopbackUrlRegex);
 
   await expectOneScrapeCycle(current.scraper);
@@ -348,7 +355,7 @@ test('baselines silently, retries one 225-card summary, then ignores unchanged c
   expect(current.send).toHaveBeenCalledTimes(2);
   expect(current.send.mock.calls[0]).toStrictEqual(current.send.mock.calls[1]);
   expect(current.networkRequests()).toBe(4);
-  expect(current.cache.getSnapshot(scraperId, 'cards:28')).not.toBe(
+  expect(current.cache.getSnapshot(scraperId, cardsKey)).not.toBe(
     baselineCards,
   );
 
@@ -365,7 +372,7 @@ test('rolls back a failed SQLite commit, retries commit-only, then reports an un
 
   await expectOneScrapeCycle(current.scraper);
   const baselineListing = current.cache.getSnapshot(scraperId, 'listing');
-  const baselineCards = current.cache.getSnapshot(scraperId, 'cards:28');
+  const baselineCards = current.cache.getSnapshot(scraperId, cardsKey);
   current.scenario.updated = true;
 
   current.cache.closeCache();
@@ -387,7 +394,7 @@ test('rolls back a failed SQLite commit, retries commit-only, then reports an un
   expect(current.send).toHaveBeenCalledOnce();
   expect(current.networkRequests()).toBe(4);
   expect(current.cache.getSnapshot(scraperId, 'listing')).toBe(baselineListing);
-  expect(current.cache.getSnapshot(scraperId, 'cards:28')).toBe(baselineCards);
+  expect(current.cache.getSnapshot(scraperId, cardsKey)).toBe(baselineCards);
   expect(current.errorSend).toHaveBeenCalledOnce();
 
   current.cache.closeCache();
@@ -400,7 +407,7 @@ test('rolls back a failed SQLite commit, retries commit-only, then reports an un
   expect(current.send).toHaveBeenCalledOnce();
   expect(current.networkRequests()).toBe(4);
   expect(current.cache.getSnapshot(scraperId, 'listing')).toBe(baselineListing);
-  expect(current.cache.getSnapshot(scraperId, 'cards:28')).not.toBe(
+  expect(current.cache.getSnapshot(scraperId, cardsKey)).not.toBe(
     baselineCards,
   );
 
@@ -422,9 +429,15 @@ test('rolls back a failed SQLite commit, retries commit-only, then reports an un
   expect(JSON.stringify(newTimetablePayloads)).toContain(
     'Промени во распоредот',
   );
+  expect(JSON.stringify(newTimetablePayloads)).toContain(
+    '**Нов распоред:** Timetable 29',
+  );
+  expect(JSON.stringify(newTimetablePayloads)).toContain(
+    '**Активен распоред:** Timetable 29',
+  );
   expect(
     countComponentTree(parseMessageComponents(newTimetablePayloads[0]?.[0])),
-  ).toBe(2);
+  ).toBe(6);
 
   await expectOneScrapeCycle(current.scraper);
 
