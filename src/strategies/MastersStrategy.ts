@@ -36,7 +36,10 @@ export class MastersStrategy extends HtmlStrategy {
     return id === '' ? null : id;
   }
 
-  public getPostData($element: Cheerio<Element>): PostData {
+  public getPostData(
+    $element: Cheerio<Element>,
+    accentColor?: number,
+  ): PostData {
     const title = truncateString(
       $element.find('h5').text().replaceAll(/\s+/gu, ' ').trim() || '?',
     );
@@ -61,9 +64,17 @@ export class MastersStrategy extends HtmlStrategy {
     const member = truncateString(cellText(3), 100);
     const content = cellText(8);
 
-    const component = new ContainerBuilder()
+    const identity = bold(`${index} - ${student}`);
+
+    const component = new ContainerBuilder();
+
+    if (accentColor !== undefined) {
+      component.setAccentColor(accentColor);
+    }
+
+    component
       .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(bold(`${index} - ${student}`)),
+        textDisplayComponent.setContent(`-# Магистерски труд\n${identity}`),
       )
       .addSeparatorComponents((separatorComponent) =>
         separatorComponent.setSpacing(SeparatorSpacingSize.Large),

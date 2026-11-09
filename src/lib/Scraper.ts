@@ -4,7 +4,13 @@ import { z } from 'zod';
 
 import type { PostData } from './Post.js';
 
+const AccentColorSchema = z
+  .string()
+  .regex(/^#[0-9a-f]{6}$/iu)
+  .transform((value) => Number.parseInt(value.slice(1), 16));
+
 export const ScraperConfigSchema = z.object({
+  accentColor: AccentColorSchema.optional(),
   enabled: z.boolean().optional(),
   link: z.string(),
   maxPosts: z.number().optional(),
@@ -40,6 +46,7 @@ export type ScraperStrategy = {
 };
 
 export type StrategyContext = {
+  accentColor?: number | undefined;
   cookie: string | undefined;
   link: string;
   maxPosts: number;

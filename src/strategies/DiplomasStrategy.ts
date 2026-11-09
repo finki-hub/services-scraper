@@ -36,7 +36,10 @@ export class DiplomasStrategy extends HtmlStrategy {
     return id === '' ? null : id;
   }
 
-  public getPostData($element: Cheerio<Element>): PostData {
+  public getPostData(
+    $element: Cheerio<Element>,
+    accentColor?: number,
+  ): PostData {
     const title = truncateString(
       $element
         .find('div.panel-heading')
@@ -64,9 +67,17 @@ export class DiplomasStrategy extends HtmlStrategy {
 
     const content = cellText(7);
 
-    const component = new ContainerBuilder()
+    const identity = bold(`${index} - ${student}`);
+
+    const component = new ContainerBuilder();
+
+    if (accentColor !== undefined) {
+      component.setAccentColor(accentColor);
+    }
+
+    component
       .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(bold(`${index} - ${student}`)),
+        textDisplayComponent.setContent(`-# Дипломски труд\n${identity}`),
       )
       .addSeparatorComponents((separatorComponent) =>
         separatorComponent.setSpacing(SeparatorSpacingSize.Large),

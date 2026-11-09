@@ -101,6 +101,8 @@ describe('extractErrorCauses', () => {
 });
 
 describe('configuration schemas', () => {
+  const exampleLink = 'https://example.test';
+
   it('strategy schema accepts every known strategy value', () => {
     for (const strategy of Object.values(Strategy)) {
       expect(StrategySchema.parse(strategy)).toBe(strategy);
@@ -114,19 +116,41 @@ describe('configuration schemas', () => {
   it('scraper config schema requires link and strategy', () => {
     expect(
       ScraperConfigSchema.parse({
-        link: 'https://example.test',
+        link: exampleLink,
         strategy: 'jobs',
       }),
     ).toStrictEqual({
-      link: 'https://example.test',
+      link: exampleLink,
       strategy: 'jobs',
     });
-    expect(() =>
-      ScraperConfigSchema.parse({ link: 'https://example.test' }),
-    ).toThrow(invalidInputRegex);
+    expect(() => ScraperConfigSchema.parse({ link: exampleLink })).toThrow(
+      invalidInputRegex,
+    );
     expect(() => ScraperConfigSchema.parse({ strategy: 'jobs' })).toThrow(
       invalidInputRegex,
     );
+  });
+
+  it('parses accentColor hex strings into integers', () => {
+    expect(
+      ScraperConfigSchema.parse({
+        accentColor: '#2A93D1',
+        link: exampleLink,
+        strategy: 'diplomas',
+      }).accentColor,
+    ).toBe(0x2a_93_d1);
+  });
+
+  it('rejects malformed accentColor values', () => {
+    for (const accentColor of ['2a93d1', '#xyz123', '#2a93d1ff', 'blue']) {
+      expect(() =>
+        ScraperConfigSchema.parse({
+          accentColor,
+          link: exampleLink,
+          strategy: 'diplomas',
+        }),
+      ).toThrow(invalidInputRegex);
+    }
   });
 
   it('accepts minimal undefined config for defaults fallback', () => {
@@ -141,7 +165,7 @@ describe('configuration schemas', () => {
         scrapers: {
           announcements: {
             enabled: true,
-            link: 'https://example.test',
+            link: exampleLink,
             name: 'Announcements',
             strategy: 'announcements',
           },

@@ -268,6 +268,7 @@ export class Scraper {
     const scrapeStart = performance.now();
     try {
       const result = await this.strategy.getChanges({
+        accentColor: this.scraperConfig.accentColor,
         cookie: this.cookie,
         link: this.scraperConfig.link,
         maxPosts,

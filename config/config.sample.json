@@ -40,12 +40,14 @@
     "diplomas": {
       "strategy": "diplomas",
       "link": "https://diplomski.finki.ukim.mk/DiplomaList",
+      "accentColor": "#2a93d1",
       "name": "Дипломски",
       "enabled": false
     },
     "masters": {
       "strategy": "masters",
       "link": "https://magisterski.finki.ukim.mk/list-MasterThesis",
+      "accentColor": "#313183",
       "name": "Магистерски",
       "enabled": false
     },

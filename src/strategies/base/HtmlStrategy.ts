@@ -56,7 +56,7 @@ export abstract class HtmlStrategy implements ScraperStrategy {
     const newPosts: PostData[] = [];
 
     for (const post of posts.toReversed()) {
-      const data = this.getPostData($(post));
+      const data = this.getPostData($(post), context.accentColor);
 
       if (data.id === null) {
         logger.error(
@@ -84,7 +84,10 @@ export abstract class HtmlStrategy implements ScraperStrategy {
 
   public abstract getId($element: Cheerio<Element>): null | string;
 
-  public abstract getPostData($element: Cheerio<Element>): PostData;
+  public abstract getPostData(
+    $element: Cheerio<Element>,
+    accentColor?: number,
+  ): PostData;
 
   public getRequestInit(cookie: string | undefined): RequestInit | undefined {
     if (cookie === undefined) {

@@ -454,10 +454,13 @@ describe('DiplomasStrategy and MastersStrategy', () => {
       `<div class="panel"><div class="panel-heading"> Diploma \n Topic </div><div class="panel-body"><table>${rows}</table></div></div>`,
       'div.panel',
     );
-    const post = strategy.getPostData($element);
-    const strings = collectStrings(post.component.toJSON()).join('\n');
+    const post = strategy.getPostData($element, 0x2a_93_d1);
+    const json = post.component.toJSON() as { accent_color?: number };
+    const strings = collectStrings(json).join('\n');
 
     expect(post.id).toBe('Diploma Topic');
+    expect(json.accent_color).toBe(0x2a_93_d1);
+    expect(strings).toContain('Дипломски труд');
     expect(strings).toContain('123/2020 - Jane Doe');
     expect(strings).toContain('Diploma Topic');
     expect(strings).toContain('Diploma abstract');
@@ -486,9 +489,19 @@ describe('DiplomasStrategy and MastersStrategy', () => {
       'div.row',
     );
     const post = strategy.getPostData($element);
-    const strings = collectStrings(post.component.toJSON()).join('\n');
+    const json = post.component.toJSON() as { accent_color?: number };
+    const strings = collectStrings(json).join('\n');
 
     expect(post.id).toBe('Master Topic');
+    expect(json.accent_color).toBeUndefined();
+    expect(strings).toContain('Магистерски труд');
+
+    const coloredPost = strategy.getPostData($element, 0x31_31_83);
+    const coloredJson = coloredPost.component.toJSON() as {
+      accent_color?: number;
+    };
+
+    expect(coloredJson.accent_color).toBe(0x31_31_83);
     expect(strings).toContain('456/2021 - Doe John');
     expect(strings).toContain('Master Topic');
     expect(strings).toContain('Нема опис.');
