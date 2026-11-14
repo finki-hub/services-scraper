@@ -12,7 +12,10 @@ import type { CheerioElement as Element } from '../../lib/Html.js';
 import type { PostData } from '../../lib/Post.js';
 
 import { truncateString } from '../../utils/components.js';
+import { normalizeURL } from '../../utils/links.js';
 import { HtmlStrategy } from './HtmlStrategy.js';
+
+const BASE_URL = 'https://finki.ukim.mk';
 
 export abstract class FinkiNewsStrategy extends HtmlStrategy {
   public idsSelector = 'a + a';
@@ -20,16 +23,14 @@ export abstract class FinkiNewsStrategy extends HtmlStrategy {
   public getId($element: Cheerio<Element>): null | string {
     const url = $element.find(this.idsSelector).attr('href')?.trim();
 
-    return url === undefined || url === ''
-      ? null
-      : `https://finki.ukim.mk${url}`;
+    return url === undefined || url === '' ? null : normalizeURL(url, BASE_URL);
   }
 
   public getPostData($element: Cheerio<Element>): PostData {
-    const url = $element.find('a + a').attr('href')?.trim();
-    const link = url === undefined ? null : `https://finki.ukim.mk${url}`;
-
-    const title = truncateString($element.find('a + a').text().trim() || '?');
+    const link = this.getId($element);
+    const title = truncateString(
+      $element.find(this.idsSelector).text().trim() || '?',
+    );
 
     const content =
       $element

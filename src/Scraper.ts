@@ -215,7 +215,6 @@ export class Scraper {
       itemsFound: result.itemsFound ?? result.posts.length,
       itemsNew: result.posts.length,
     };
-    this.pendingDelivery = pending;
 
     if (getConfigProperty('sendPosts')) {
       run.phase = 'delivery';
@@ -225,16 +224,33 @@ export class Scraper {
           this.scraperConfig.role === ''
             ? undefined
             : createMentionComponent(this.scraperConfig.role);
-        pending.batches = materializeDeliveryBatches(
+        const { batches, skippedPostCount } = materializeDeliveryBatches(
           result.posts.map((post) => post.component),
           mention,
         );
+        pending.batches = batches;
+
+        if (skippedPostCount > 0) {
+          this.logger.error(
+            `[${this.scraperName}] Skipped ${skippedPostCount} undeliverable post(s)`,
+          );
+        }
+        if (batches.length === 0 && result.posts.length > 0) {
+          pending.preflightError = new Error('undeliverable_posts');
+        }
       } catch (error) {
         pending.preflightError =
           error instanceof Error
             ? error
             : new Error('delivery_preflight_error');
       }
+    }
+
+    // A pending delivery that cannot be materialized would be retried forever
+    // without refetching. Only retain it once preflight has succeeded; the next
+    // cycle then fetches fresh posts instead of repeating the same failure.
+    if (pending.preflightError === undefined) {
+      this.pendingDelivery = pending;
     }
 
     return pending;

@@ -8,6 +8,11 @@ export type MaterializedBatch = {
   postCount: number;
 };
 
+export type MaterializedDelivery = {
+  batches: MaterializedBatch[];
+  skippedPostCount: number;
+};
+
 const countComponentTree = (value: unknown): number => {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return 0;
@@ -32,13 +37,45 @@ const countComponentTree = (value: unknown): number => {
   return count;
 };
 
+type PreparedPost = {
+  component: APIMessageTopLevelComponent;
+  count: number;
+};
+
+const preparePost = (
+  candidate: JSONEncodable<APIMessageTopLevelComponent>,
+  mentionCount: number,
+): PreparedPost | undefined => {
+  let post: APIMessageTopLevelComponent;
+
+  try {
+    post = structuredClone(candidate.toJSON());
+  } catch {
+    return undefined;
+  }
+
+  const count = countComponentTree(post);
+
+  return count + mentionCount > MAX_COMPONENTS_PER_MESSAGE
+    ? undefined
+    : { component: post, count };
+};
+
+/**
+ * Materializes and packs post components into Discord messages. Posts that
+ * cannot be serialized or that exceed Discord's component limit are skipped
+ * and counted, so one malformed post cannot block every other post.
+ *
+ * @param posts - Post component builders in feed order.
+ * @param mention - Optional role mention added once per batch.
+ * @returns The deliverable batches and how many posts were skipped.
+ */
 export const materializeDeliveryBatches = (
   posts: Array<JSONEncodable<APIMessageTopLevelComponent>>,
   mention?: JSONEncodable<APIMessageTopLevelComponent>,
-): MaterializedBatch[] => {
+): MaterializedDelivery => {
   // Serialize each builder once and detach the payload from any shared builder
   // state, so retries reuse the same materialized JSON.
-  const serializedPosts = posts.map((post) => structuredClone(post.toJSON()));
   const serializedMention = mention
     ? structuredClone(mention.toJSON())
     : undefined;
@@ -49,12 +86,17 @@ export const materializeDeliveryBatches = (
   let current: APIMessageTopLevelComponent[] = [];
   let currentPosts = 0;
   let currentCount = mentionCount;
+  let skippedPostCount = 0;
 
-  for (const post of serializedPosts) {
-    const postCount = countComponentTree(post);
-    if (postCount + mentionCount > MAX_COMPONENTS_PER_MESSAGE) {
-      throw new Error('oversized_post');
+  for (const candidate of posts) {
+    const prepared = preparePost(candidate, mentionCount);
+
+    if (prepared === undefined) {
+      skippedPostCount += 1;
+      continue;
     }
+
+    const { component: post, count: postCount } = prepared;
 
     if (
       currentPosts > 0 &&
@@ -82,5 +124,5 @@ export const materializeDeliveryBatches = (
     });
   }
 
-  return batches;
+  return { batches, skippedPostCount };
 };

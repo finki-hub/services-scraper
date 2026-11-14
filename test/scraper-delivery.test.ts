@@ -434,6 +434,19 @@ test('oversized post is rejected during preflight before any webhook send', asyn
   ]);
 });
 
+test('refetches after an oversized preflight instead of retrying a wedged delivery', async () => {
+  const fixture = await setupRun({ oversized: true });
+  fixture.sleep.mockResolvedValueOnce(undefined);
+  await fixture.run();
+
+  expect(fixture.getChanges).toHaveBeenCalledTimes(2);
+  expect(fixture.send).not.toHaveBeenCalled();
+  expect(fixture.commit).not.toHaveBeenCalled();
+  expect(fixture.terminal()).toHaveLength(2);
+
+  fixture.assertSafe();
+});
+
 test.each([
   { count: 10, outcome: 'disabled', remaining: 10, sendPosts: false },
   { count: 0, outcome: 'empty', remaining: 0, sendPosts: true },
