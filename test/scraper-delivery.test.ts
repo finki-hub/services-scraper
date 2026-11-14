@@ -2,7 +2,7 @@
 /* eslint-disable vitest/prefer-to-be-falsy -- Require literal false for person-profile suppression. */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
-import type { StrategyResult } from '../src/lib/Scraper.js';
+import type { StrategyContext, StrategyResult } from '../src/lib/Scraper.js';
 
 const stopScraperRegex = /stop scraper/u;
 const stopScraperMessage = 'stop scraper';
@@ -185,6 +185,7 @@ const secretError = () =>
 
 const setupRun = async (
   options: {
+    accentColor?: number;
     count?: number;
     oversized?: boolean;
     sendPosts?: boolean;
@@ -237,7 +238,9 @@ const setupRun = async (
       id: `${sentinel}-${index}`,
     }),
   );
-  const getChanges = vi.fn<() => Promise<StrategyResult>>(() => {
+  const getChanges = vi.fn<
+    (context: StrategyContext) => Promise<StrategyResult>
+  >(() => {
     if (options.stage === 'fetch') {
       // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- Verify non-Error throws cannot leak their properties.
       return Promise.reject(
@@ -300,7 +303,13 @@ const setupRun = async (
       ({
         errorDelay: 456,
         maxPosts: 20,
-        scrapers: { delivery: { link: sentinel, strategy: 'delivery' } },
+        scrapers: {
+          delivery: {
+            accentColor: options.accentColor,
+            link: sentinel,
+            strategy: 'delivery',
+          },
+        },
         sendPosts: options.sendPosts ?? true,
         successDelay: 123,
         webhook: options.webhook === false ? '' : 'https://discord.test/fake',
@@ -357,6 +366,16 @@ const setupRun = async (
     terminal,
   };
 };
+
+test('forwards the configured accent color into the strategy context', async () => {
+  const accentColor = 0x2a_93_d1;
+  const fixture = await setupRun({ accentColor });
+  await fixture.run();
+
+  expect(fixture.getChanges).toHaveBeenCalledWith(
+    expect.objectContaining({ accentColor }),
+  );
+});
 
 test('missing webhook fails explicitly without delivery or checkpoint', async () => {
   const fixture = await setupRun({ webhook: false });

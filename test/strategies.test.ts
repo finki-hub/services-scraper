@@ -1,7 +1,7 @@
 import type { Cheerio, CheerioAPI } from 'cheerio';
 
 import * as cheerio from 'cheerio';
-import { ComponentType } from 'discord.js';
+import { type APIContainerComponent, ComponentType } from 'discord.js';
 import { afterEach, describe, expect, it, test, vi } from 'vitest';
 
 import type { CheerioElement as Element } from '../src/lib/Html.js';
@@ -30,6 +30,14 @@ const collectStrings = (value: unknown): string[] => {
   return typeof value === 'object' && value !== null
     ? Object.values(value as Record<string, unknown>).flatMap(collectStrings)
     : [];
+};
+
+const firstTextDisplayContent = (
+  json: APIContainerComponent,
+): string | undefined => {
+  const first = json.components[0];
+
+  return first?.type === ComponentType.TextDisplay ? first.content : undefined;
 };
 
 const loadElement = (html: string, selector: string): Cheerio<Element> => {
@@ -454,11 +462,15 @@ describe('DiplomasStrategy and MastersStrategy', () => {
       `<div class="panel"><div class="panel-heading"> Diploma \n Topic </div><div class="panel-body"><table>${rows}</table></div></div>`,
       'div.panel',
     );
-    const post = strategy.getPostData($element);
-    const strings = collectStrings(post.component.toJSON()).join('\n');
+    const post = strategy.getPostData($element, 0x2a_93_d1);
+    const json = post.component.toJSON() as APIContainerComponent;
+    const strings = collectStrings(json).join('\n');
 
     expect(post.id).toBe('Diploma Topic');
-    expect(strings).toContain('123/2020 - Jane Doe');
+    expect(json.accent_color).toBe(0x2a_93_d1);
+    expect(firstTextDisplayContent(json)).toBe(
+      '-# Дипломски труд\n**123/2020 - Jane Doe**',
+    );
     expect(strings).toContain('Diploma Topic');
     expect(strings).toContain('Diploma abstract');
     expect(strings).toContain('Ментор:');
@@ -486,10 +498,19 @@ describe('DiplomasStrategy and MastersStrategy', () => {
       'div.row',
     );
     const post = strategy.getPostData($element);
-    const strings = collectStrings(post.component.toJSON()).join('\n');
+    const json = post.component.toJSON() as APIContainerComponent;
+    const strings = collectStrings(json).join('\n');
 
     expect(post.id).toBe('Master Topic');
-    expect(strings).toContain('456/2021 - Doe John');
+    expect(json.accent_color).toBeUndefined();
+    expect(firstTextDisplayContent(json)).toBe(
+      '-# Магистерски труд\n**456/2021 - Doe John**',
+    );
+
+    const coloredPost = strategy.getPostData($element, 0x31_31_83);
+    const coloredJson = coloredPost.component.toJSON() as APIContainerComponent;
+
+    expect(coloredJson.accent_color).toBe(0x31_31_83);
     expect(strings).toContain('Master Topic');
     expect(strings).toContain('Нема опис.');
     expect(strings).toContain('Претседател:');

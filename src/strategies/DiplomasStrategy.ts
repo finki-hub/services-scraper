@@ -1,18 +1,12 @@
 import type { Cheerio } from 'cheerio';
 
-import {
-  bold,
-  ContainerBuilder,
-  heading,
-  HeadingLevel,
-  SeparatorSpacingSize,
-} from 'discord.js';
 import { Service } from 'finki-auth';
 
 import type { CheerioElement as Element } from '../lib/Html.js';
 import type { PostData } from '../lib/Post.js';
 
 import { truncateString } from '../utils/components.js';
+import { createThesisContainer } from '../utils/thesis.js';
 import { HtmlStrategy } from './base/HtmlStrategy.js';
 
 export class DiplomasStrategy extends HtmlStrategy {
@@ -36,7 +30,10 @@ export class DiplomasStrategy extends HtmlStrategy {
     return id === '' ? null : id;
   }
 
-  public getPostData($element: Cheerio<Element>): PostData {
+  public getPostData(
+    $element: Cheerio<Element>,
+    accentColor?: number,
+  ): PostData {
     const title = truncateString(
       $element
         .find('div.panel-heading')
@@ -64,38 +61,18 @@ export class DiplomasStrategy extends HtmlStrategy {
 
     const content = cellText(7);
 
-    const component = new ContainerBuilder()
-      .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(bold(`${index} - ${student}`)),
-      )
-      .addSeparatorComponents((separatorComponent) =>
-        separatorComponent.setSpacing(SeparatorSpacingSize.Large),
-      )
-      .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(heading(title, HeadingLevel.Three)),
-      )
-      .addSeparatorComponents((separatorComponent) =>
-        separatorComponent
-          .setSpacing(SeparatorSpacingSize.Small)
-          .setDivider(false),
-      )
-      .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(
-          content === '?' ? 'Нема опис.' : truncateString(content),
-        ),
-      )
-      .addSeparatorComponents((separatorComponent) =>
-        separatorComponent.setSpacing(SeparatorSpacingSize.Large),
-      )
-      .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(`${bold('Ментор:')} ${mentor}`),
-      )
-      .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(`${bold('Член 1:')} ${member1}`),
-      )
-      .addTextDisplayComponents((textDisplayComponent) =>
-        textDisplayComponent.setContent(`${bold('Член 2:')} ${member2}`),
-      );
+    const component = createThesisContainer({
+      accentColor,
+      content,
+      identity: `${index} - ${student}`,
+      people: [
+        { label: 'Ментор', name: mentor },
+        { label: 'Член 1', name: member1 },
+        { label: 'Член 2', name: member2 },
+      ],
+      title,
+      typeLabel: 'Дипломски труд',
+    });
 
     return {
       component,
