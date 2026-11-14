@@ -18,6 +18,7 @@ import {
   type TimetableInfo,
 } from '../utils/edupage.js';
 import { fetchWithTimeout } from '../utils/fetch.js';
+import { HttpError } from '../utils/http-error.js';
 
 const SPLIT_REGEX = /[,;]/u;
 const CARD_ID_COLLATOR = new Intl.Collator();
@@ -337,7 +338,8 @@ export class EduPageStrategy implements ScraperStrategy {
     );
 
     if (!response.ok) {
-      throw new Error(
+      throw new HttpError(
+        response.status,
         `EduPage listing request failed with status ${response.status}`,
       );
     }
@@ -361,7 +363,8 @@ export class EduPageStrategy implements ScraperStrategy {
     );
 
     if (!response.ok) {
-      throw new Error(
+      throw new HttpError(
+        response.status,
         `EduPage timetable request failed with status ${response.status}`,
       );
     }

@@ -9,6 +9,11 @@ import {
 } from '../src/lib/Scraper.js';
 import { truncateString } from '../src/utils/components.js';
 import { ERROR_MESSAGES } from '../src/utils/constants.js';
+import {
+  formatSafeErrorDetails,
+  getSafeErrorDetails,
+} from '../src/utils/error-details.js';
+import { HttpError } from '../src/utils/http-error.js';
 
 const invalidInputRegex = /Invalid/u;
 const schemaErrorRegex = /Invalid|Too small/u;
@@ -25,6 +30,74 @@ describe('truncateString', () => {
 
   it('truncates long strings and preserves max length', () => {
     expect(truncateString('1234567890', 6)).toBe('123...');
+  });
+});
+
+describe('safe error details', () => {
+  it('projects status and cause codes without reading messages', () => {
+    const cause = Object.assign(new TypeError('secret cause'), {
+      code: 'UND_ERR_CONNECT_TIMEOUT',
+    });
+    const error = new HttpError(503, 'secret message', { cause });
+
+    const details = getSafeErrorDetails(error);
+
+    expect(details).toStrictEqual({
+      category: 'error',
+      causeCodes: ['UND_ERR_CONNECT_TIMEOUT'],
+      status: 503,
+    });
+    expect(formatSafeErrorDetails(details)).toBe(
+      'status=503, cause=UND_ERR_CONNECT_TIMEOUT',
+    );
+    expect(JSON.stringify(details)).not.toContain('secret');
+  });
+
+  it('collects AggregateError child codes', () => {
+    const inner = Object.assign(new Error('secret'), {
+      code: 'ECONNREFUSED',
+    });
+    const cause = new AggregateError([inner], 'aggregate');
+    const error = new TypeError('fetch failed', { cause });
+
+    const details = getSafeErrorDetails(error);
+
+    expect(details).toStrictEqual({
+      category: 'type_error',
+      causeCodes: ['ECONNREFUSED'],
+    });
+    expect(formatSafeErrorDetails(details)).toBe('cause=ECONNREFUSED');
+  });
+
+  it('ignores hostile thrown values', () => {
+    const hostile = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error('no access');
+        },
+      },
+    );
+
+    expect(() => getSafeErrorDetails(hostile)).not.toThrow();
+    expect(getSafeErrorDetails(hostile)).toMatchObject({
+      category: 'unknown',
+      causeCodes: [],
+    });
+  });
+
+  it('rejects malformed code and status metadata', () => {
+    const error = Object.assign(new Error('secret message'), {
+      code: 'bad code',
+      status: 999,
+    });
+
+    const details = getSafeErrorDetails(error);
+
+    expect(details.code).toBeUndefined();
+    expect(details.status).toBeUndefined();
+    expect(formatSafeErrorDetails(details)).toBe('');
+    expect(JSON.stringify(details)).not.toContain('secret');
   });
 });
 

@@ -26,6 +26,7 @@ import {
 import { truncateString } from '../../utils/components.js';
 import { ERROR_MESSAGES } from '../../utils/constants.js';
 import { fetchWithTimeout } from '../../utils/fetch.js';
+import { HttpError } from '../../utils/http-error.js';
 import {
   parseWordPressPage,
   type WordPressItem,
@@ -227,7 +228,10 @@ export abstract class WordPressStrategy implements ScraperStrategy {
     }
 
     if (!response.ok) {
-      throw new Error(`${ERROR_MESSAGES.badResponseCode}: ${response.status}`);
+      throw new HttpError(
+        response.status,
+        `${ERROR_MESSAGES.badResponseCode}: ${response.status}`,
+      );
     }
 
     return parseWordPressPage(response);

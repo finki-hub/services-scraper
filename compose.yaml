@@ -6,8 +6,15 @@ services:
     image: services-scraper-dev:latest
     restart: unless-stopped
     environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: development
       POSTHOG_KEY: ${POSTHOG_KEY:-}
       POSTHOG_HOST: ${POSTHOG_HOST:-https://eu.i.posthog.com}
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: "10m"
     volumes:
       - ./cache:/app/cache
       - ./config:/app/config
