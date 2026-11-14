@@ -1,4 +1,5 @@
 /* eslint-disable camelcase -- Assertions use PostHog wire property names. */
+/* eslint-disable max-lines -- The scraper fixture and its behaviour tests are intentionally colocated. */
 /* eslint-disable vitest/prefer-to-be-falsy -- Require literal false for person-profile suppression. */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
@@ -189,6 +190,7 @@ const setupRun = async (
   options: {
     accentColor?: number;
     count?: number;
+    errorDelay?: number;
     oversized?: boolean | number;
     sendPosts?: boolean;
     stage?: 'acquire' | 'commit' | 'delivery' | 'fetch' | undefined;
@@ -312,7 +314,7 @@ const setupRun = async (
   vi.doMock('../src/configuration/config.js', () => ({
     getConfigProperty: (property: string) =>
       ({
-        errorDelay: 456,
+        errorDelay: options.errorDelay ?? 456,
         maxPosts: 20,
         scrapers: {
           delivery: {
@@ -369,6 +371,7 @@ const setupRun = async (
     getCookie,
     log,
     notification,
+    posts,
     run,
     scraper,
     sdkOptions,
@@ -546,6 +549,64 @@ test('includes safe upstream status in error alerts', async () => {
   const [payload] = fixture.errorSend.mock.calls[0] as [{ content: string }];
 
   expect(payload.content).toContain('Details: status=503');
+
+  fixture.assertSafe();
+});
+
+test('alerts once per failure reason and allows a different reason', async () => {
+  const fixture = await setupRun({ count: 2, stage: 'fetch' });
+  fixture.errorSend.mockResolvedValue(undefined);
+  let attempts = 0;
+
+  fixture.getChanges.mockImplementation(() => {
+    attempts += 1;
+
+    return attempts === 1
+      ? Promise.reject(secretError())
+      : Promise.resolve({ commit: fixture.commit, posts: fixture.posts });
+  });
+  fixture.send.mockRejectedValueOnce(secretError());
+  const delays: number[] = [];
+
+  fixture.sleep.mockImplementation((ms: number) => {
+    delays.push(ms);
+
+    return delays.length === 1
+      ? Promise.resolve()
+      : Promise.reject(new Error(stopScraperMessage));
+  });
+
+  await fixture.run();
+
+  expect(delays).toStrictEqual([456, 912]);
+  expect(fixture.errorSend).toHaveBeenCalledTimes(2);
+
+  const messages = fixture.errorSend.mock.calls.map(
+    ([payload]) => (payload as { content: string }).content,
+  );
+
+  expect(messages[0]).toContain('Reason: fetch_error');
+  expect(messages[1]).toContain('Reason: delivery_error');
+
+  fixture.assertSafe();
+});
+
+test('caps error backoff at fifteen minutes', async () => {
+  const fixture = await setupRun({ errorDelay: 400_000, stage: 'fetch' });
+  fixture.errorSend.mockResolvedValue(undefined);
+  const delays: number[] = [];
+
+  fixture.sleep.mockImplementation((ms: number) => {
+    delays.push(ms);
+
+    return delays.length >= 3
+      ? Promise.reject(new Error(stopScraperMessage))
+      : Promise.resolve();
+  });
+
+  await fixture.run();
+
+  expect(delays).toStrictEqual([400_000, 800_000, 900_000]);
 
   fixture.assertSafe();
 });

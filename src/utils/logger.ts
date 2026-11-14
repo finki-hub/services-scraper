@@ -33,6 +33,7 @@ const targets = isProduction
           frequency: 'daily',
           limit: {
             count: 7,
+            removeOtherLogFiles: true,
           },
           mkdir: true,
           size: '10m',
