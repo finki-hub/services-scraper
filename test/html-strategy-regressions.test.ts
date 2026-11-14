@@ -38,13 +38,18 @@ const setupHtmlStrategy = async (postsSelector: string) => {
 
   class TestHtmlStrategy extends HtmlStrategy {
     public postsSelector = postsSelector;
+    public receivedAccentColor: number | undefined;
 
     public getId($element: Cheerio<CheerioElement>): null | string {
       return $element.attr('data-id') ?? null;
     }
 
-    public getPostData($element: Cheerio<CheerioElement>): PostData {
+    public getPostData(
+      $element: Cheerio<CheerioElement>,
+      accentColor?: number,
+    ): PostData {
       const id = this.getId($element);
+      this.receivedAccentColor = accentColor;
 
       return {
         component: new TextDisplayBuilder().setContent(id ?? 'missing-id'),
@@ -73,6 +78,20 @@ afterEach(() => {
 });
 
 describe('HtmlStrategy DOM selection regressions', () => {
+  it('forwards the accent color to getPostData', async () => {
+    const fragment = '<article data-id="new-1">new post</article>';
+    const { strategy } = await setupHtmlStrategy(fragment);
+    cacheMocks.getSeenPostIds.mockReturnValue(new Set());
+
+    await strategy.getChanges({
+      ...context,
+      accentColor: 0x31_31_83,
+      maxPosts: 1,
+    });
+
+    expect(strategy.receivedAccentColor).toBe(0x31_31_83);
+  });
+
   it('keeps tag, script, and style fragment nodes while filtering text and comments before the cap', async () => {
     const fragment = [
       '<script data-id="already-seen">script content</script>',
