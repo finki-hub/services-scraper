@@ -24,10 +24,17 @@ import {
   type MaterializedBatch,
   materializeDeliveryBatches,
 } from './utils/delivery.js';
+import {
+  formatSafeErrorDetails,
+  getSafeErrorDetails,
+} from './utils/error-details.js';
 import { logger } from './utils/logger.js';
 import { errorCategory } from './utils/safe-error.js';
 import { createStrategy } from './utils/strategies.js';
 import { errorWebhook } from './utils/webhooks.js';
+
+const ERROR_ALERT_COOLDOWN_MS = 6 * 60 * 60_000;
+const MAX_ERROR_BACKOFF_MS = 15 * 60_000;
 
 type PendingDelivery = {
   batches: MaterializedBatch[];
@@ -44,7 +51,13 @@ export class Scraper {
     return this.scraperName;
   }
 
+  private alertActive = false;
+
+  private consecutiveFailures = 0;
+
   private cookie: string | undefined;
+
+  private lastErrorAlertAt: number | undefined;
 
   private readonly logger: Logger;
 
@@ -131,11 +144,15 @@ export class Scraper {
         captureScrapeRun(run);
       }
 
-      await Scraper.sleep(
-        getConfigProperty(
-          run.status === 'error' ? 'errorDelay' : 'successDelay',
-        ),
-      );
+      const failed = run.status === 'error';
+
+      if (failed) {
+        this.consecutiveFailures += 1;
+      } else {
+        await this.resetFailureState();
+      }
+
+      await Scraper.sleep(this.getNextDelay(failed));
     }
   }
 
@@ -364,6 +381,18 @@ export class Scraper {
     this.commitPendingDelivery(run, pending, sendPosts);
   }
 
+  private getNextDelay(failed: boolean): number {
+    if (!failed) {
+      return getConfigProperty('successDelay');
+    }
+
+    const baseDelay = getConfigProperty('errorDelay');
+    const cap = Math.max(baseDelay, MAX_ERROR_BACKOFF_MS);
+    const exponent = Math.min(this.consecutiveFailures - 1, 10);
+
+    return Math.min(baseDelay * 2 ** exponent, cap);
+  }
+
   private async handleError(
     error: unknown,
     run: ScrapeRunEvent,
@@ -375,24 +404,66 @@ export class Scraper {
       source: this.scraperName,
     });
     const category = errorCategory(error);
+    const safeDetails = formatSafeErrorDetails(getSafeErrorDetails(error));
     const webhookMessage = [
       `❌ Error in **${this.scraperName}**`,
       `Run: ${run.runId}`,
       `Phase: ${run.phase}`,
       `Reason: ${run.reason}`,
       `Category: ${category}`,
+      ...(safeDetails === '' ? [] : [`Details: ${safeDetails}`]),
     ].join('\n');
     this.logger.error(webhookMessage);
 
+    const webhook = errorWebhook ?? this.webhook;
+
+    if (webhook === undefined || !this.shouldNotifyError()) {
+      return;
+    }
+
     try {
-      await (errorWebhook ?? this.webhook)?.send({
+      await webhook.send({
         content: webhookMessage,
         username: this.scraperConfig.name ?? this.scraperName,
       });
+      this.alertActive = true;
+      this.lastErrorAlertAt = Date.now();
     } catch {
       this.logger.error(
         `[${this.scraperName}] Run: ${run.runId} Failed to send error to webhook`,
       );
+    }
+  }
+
+  private async notifyRecovery(failedRuns: number): Promise<void> {
+    const webhook = errorWebhook ?? this.webhook;
+
+    if (webhook === undefined) {
+      return;
+    }
+
+    try {
+      await webhook.send({
+        content: `✅ Recovered in **${this.scraperName}** after ${failedRuns} failed run(s)`,
+        username: this.scraperConfig.name ?? this.scraperName,
+      });
+    } catch {
+      this.logger.error(
+        `[${this.scraperName}] Failed to send recovery to webhook`,
+      );
+    }
+  }
+
+  private async resetFailureState(): Promise<void> {
+    const failedRuns = this.consecutiveFailures;
+    const shouldNotify = this.alertActive;
+
+    this.consecutiveFailures = 0;
+    this.lastErrorAlertAt = undefined;
+    this.alertActive = false;
+
+    if (shouldNotify && failedRuns > 0) {
+      await this.notifyRecovery(failedRuns);
     }
   }
 
@@ -434,5 +505,13 @@ export class Scraper {
     run.itemsFound = result.itemsFound ?? result.posts.length;
     run.itemsNew = result.posts.length;
     run.notAttempted = result.posts.length;
+  }
+
+  private shouldNotifyError(): boolean {
+    return (
+      !this.alertActive ||
+      this.lastErrorAlertAt === undefined ||
+      Date.now() - this.lastErrorAlertAt >= ERROR_ALERT_COOLDOWN_MS
+    );
   }
 }

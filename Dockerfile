@@ -9,6 +9,7 @@ RUN npm run build && npm prune --omit=dev --ignore-scripts
 
 FROM node:26-alpine AS final
 WORKDIR /app
+ENV NODE_ENV=production
 
 ARG APP_REVISION
 ENV APP_REVISION=${APP_REVISION}

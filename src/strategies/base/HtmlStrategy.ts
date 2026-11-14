@@ -15,6 +15,7 @@ import { getConfigProperty } from '../../configuration/config.js';
 import { getSeenPostIds, markPostsSeen } from '../../utils/cache.js';
 import { ERROR_MESSAGES } from '../../utils/constants.js';
 import { fetchWithTimeout } from '../../utils/fetch.js';
+import { HttpError } from '../../utils/http-error.js';
 import { logger } from '../../utils/logger.js';
 
 const NO_CHANGES: StrategyResult = {
@@ -114,7 +115,10 @@ export abstract class HtmlStrategy implements ScraperStrategy {
     }
 
     if (response.status !== 200) {
-      throw new Error(`${ERROR_MESSAGES.badResponseCode}: ${response.status}`);
+      throw new HttpError(
+        response.status,
+        `${ERROR_MESSAGES.badResponseCode}: ${response.status}`,
+      );
     }
 
     try {

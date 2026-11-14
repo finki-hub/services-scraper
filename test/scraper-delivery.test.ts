@@ -4,6 +4,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 import type { StrategyContext, StrategyResult } from '../src/lib/Scraper.js';
 
+import { HttpError } from '../src/utils/http-error.js';
+
 const stopScraperRegex = /stop scraper/u;
 const stopScraperMessage = 'stop scraper';
 
@@ -508,6 +510,79 @@ test('refetches after an oversized preflight instead of retrying a wedged delive
   expect(fixture.send).not.toHaveBeenCalled();
   expect(fixture.commit).not.toHaveBeenCalled();
   expect(fixture.terminal()).toHaveLength(2);
+
+  fixture.assertSafe();
+});
+
+test('backs off repeated failures and throttles repeated error alerts', async () => {
+  const fixture = await setupRun({ stage: 'fetch' });
+  fixture.errorSend.mockResolvedValue(undefined);
+  const delays: number[] = [];
+
+  fixture.sleep.mockImplementation((ms: number) => {
+    delays.push(ms);
+
+    return delays.length >= 3
+      ? Promise.reject(new Error(stopScraperMessage))
+      : Promise.resolve();
+  });
+
+  await fixture.run();
+
+  expect(delays).toStrictEqual([456, 912, 1_824]);
+  expect(fixture.errorSend).toHaveBeenCalledOnce();
+
+  fixture.assertSafe();
+});
+
+test('includes safe upstream status in error alerts', async () => {
+  const fixture = await setupRun({ stage: 'fetch' });
+  fixture.getChanges.mockRejectedValueOnce(
+    new HttpError(503, 'upstream unavailable'),
+  );
+
+  await fixture.run();
+
+  const [payload] = fixture.errorSend.mock.calls[0] as [{ content: string }];
+
+  expect(payload.content).toContain('Details: status=503');
+
+  fixture.assertSafe();
+});
+
+test('resets backoff and notifies once after recovery', async () => {
+  const fixture = await setupRun({ count: 0, stage: 'fetch' });
+  fixture.errorSend.mockResolvedValue(undefined);
+  let attempts = 0;
+
+  fixture.getChanges.mockImplementation(() => {
+    attempts += 1;
+
+    return attempts === 1
+      ? Promise.reject(secretError())
+      : Promise.resolve({ commit: fixture.commit, posts: [] });
+  });
+  const delays: number[] = [];
+
+  fixture.sleep.mockImplementation((ms: number) => {
+    delays.push(ms);
+
+    return delays.length >= 2
+      ? Promise.reject(new Error(stopScraperMessage))
+      : Promise.resolve();
+  });
+
+  await fixture.run();
+
+  expect(delays).toStrictEqual([456, 123]);
+  expect(fixture.errorSend).toHaveBeenCalledTimes(2);
+
+  const messages = fixture.errorSend.mock.calls.map(
+    ([payload]) => (payload as { content: string }).content,
+  );
+
+  expect(messages[0]).toContain('❌ Error in **delivery**');
+  expect(messages[1]).toContain('✅ Recovered in **delivery**');
 
   fixture.assertSafe();
 });

@@ -62,6 +62,16 @@ Posts that cannot be serialized are not skipped: the run fails during delivery p
 
 Analytics require an explicit `POSTHOG_KEY` in the environment; without it the scraper runs silently with no telemetry.
 
+### Logging
+
+In production (`NODE_ENV=production`), logs are emitted as JSON to stdout and rotated in the `logs/` directory daily or at 10 MB, keeping the seven most recent rotated files. Outside production, logs are written to stdout through `pino-pretty`.
+
+Failed scrapers retry with exponential backoff from `errorDelay` up to 15 minutes. Error notifications are sent on the first failure, at most once every six hours while it persists, and once when the scraper recovers.
+
+| Variable    | Default | Description                                                                 |
+| ----------- | ------- | --------------------------------------------------------------------------- |
+| `LOG_LEVEL` | `info`  | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent`. |
+
 ## License
 
 This project is licensed under the terms of the MIT license.
