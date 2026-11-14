@@ -46,6 +46,7 @@ export type DeliveryCounts = {
   confirmedSent: number;
   failedAttempted: number;
   notAttempted: null | number;
+  skipped: number;
 };
 export type NotificationSentEvent = DeliveryCounts & {
   count: number;
@@ -66,13 +67,14 @@ export type RunReason =
   | 'disabled'
   | 'empty'
   | 'fetch_error'
-  | 'missing_webhook';
+  | 'missing_webhook'
+  | 'skipped';
 
 export type ScrapeRunEvent = DeliveryCounts & {
   itemsFound: null | number;
   itemsNew: null | number;
   ms: number;
-  outcome: 'delivered' | 'disabled' | 'empty' | 'failed';
+  outcome: 'delivered' | 'disabled' | 'empty' | 'failed' | 'partial';
   phase: RunPhase;
   reason: RunReason;
   runId: string;
@@ -126,6 +128,7 @@ export const captureNotificationSent = (event: NotificationSentEvent): void => {
         reason: event.reason,
         run_id: event.runId,
         service: SERVICE_NAME,
+        skipped: event.skipped,
         source: event.source,
         success: event.success,
       }),
@@ -171,6 +174,7 @@ export const captureScrapeRun = (event: ScrapeRunEvent): void => {
         reason: event.reason,
         run_id: event.runId,
         service: SERVICE_NAME,
+        skipped: event.skipped,
         source: event.source,
         status: event.status,
       }),

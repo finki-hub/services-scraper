@@ -8,17 +8,7 @@ const AccentColorSchema = z
   .string()
   .regex(/^#[0-9a-f]{6}$/iu)
   .transform((value) => Number.parseInt(value.slice(1), 16));
-
-export const ScraperConfigSchema = z.object({
-  accentColor: AccentColorSchema.optional(),
-  enabled: z.boolean().optional(),
-  link: z.string(),
-  maxPosts: z.number().optional(),
-  name: z.string().optional(),
-  role: z.string().optional(),
-  strategy: z.string(),
-  webhook: z.string().optional(),
-});
+const ROLE_ID_REGEX = /^\d{17,20}$/u;
 
 export enum Strategy {
   Activities = 'activities',
@@ -34,6 +24,21 @@ export enum Strategy {
   Projects = 'projects',
   Timetables = 'timetables',
 }
+
+export const StrategySchema = z.enum(Strategy);
+
+export const EmptyOrUrlSchema = z.union([z.literal(''), z.url()]);
+
+export const ScraperConfigSchema = z.object({
+  accentColor: AccentColorSchema.optional(),
+  enabled: z.boolean().optional(),
+  link: z.url(),
+  maxPosts: z.number().int().positive().optional(),
+  name: z.string().optional(),
+  role: z.union([z.literal(''), z.string().regex(ROLE_ID_REGEX)]).optional(),
+  strategy: z.string().min(1),
+  webhook: EmptyOrUrlSchema.optional(),
+});
 
 export type ScraperConfig = z.infer<typeof ScraperConfigSchema>;
 
@@ -58,5 +63,3 @@ export type StrategyResult = {
   itemsFound?: number;
   posts: PostData[];
 };
-
-export const StrategySchema = z.enum(Strategy);

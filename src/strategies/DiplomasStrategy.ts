@@ -79,19 +79,4 @@ export class DiplomasStrategy extends HtmlStrategy {
       id: this.getId($element),
     };
   }
-
-  public override getRequestInit(
-    cookie: string | undefined,
-  ): RequestInit | undefined {
-    if (cookie === undefined) {
-      return undefined;
-    }
-
-    return {
-      credentials: 'include',
-      headers: {
-        Cookie: cookie,
-      },
-    };
-  }
 }

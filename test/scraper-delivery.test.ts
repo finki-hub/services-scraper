@@ -187,11 +187,12 @@ const setupRun = async (
   options: {
     accentColor?: number;
     count?: number;
-    oversized?: boolean;
+    oversized?: boolean | number;
     sendPosts?: boolean;
     stage?: 'acquire' | 'commit' | 'delivery' | 'fetch' | undefined;
     telemetryFails?: boolean;
     unknownError?: boolean;
+    unserializable?: boolean;
     webhook?: boolean;
   } = {},
 ) => {
@@ -223,17 +224,25 @@ const setupRun = async (
       ? Promise.reject(secretError())
       : Promise.resolve(sentinel),
   );
+  const isOversized = (index: number): boolean =>
+    options.oversized === true ||
+    (typeof options.oversized === 'number' && index < options.oversized);
   const posts: StrategyResult['posts'] = Array.from(
     { length: options.count ?? 10 },
     (_, index) => ({
       component: {
-        toJSON: () =>
-          ({
-            components: options.oversized
+        toJSON: () => {
+          if (index === 0 && options.unserializable === true) {
+            throw secretError();
+          }
+
+          return {
+            components: isOversized(index)
               ? Array.from({ length: 40 }, () => ({ type: 10 }))
               : [],
             type: 17,
-          }) as never,
+          } as never;
+        },
       },
       id: `${sentinel}-${index}`,
     }),
@@ -418,20 +427,89 @@ test('oversized post is rejected during preflight before any webhook send', asyn
   expect(fixture.terminal()[0]).toMatchObject({
     attempted: 0,
     failed_attempted: 0,
-    not_attempted: 10,
+    not_attempted: 0,
     phase: 'delivery',
     reason: 'delivery_error',
+    skipped: 10,
   });
   expect(fixture.notification()).toStrictEqual([
     expect.objectContaining({
       attempted: 0,
       confirmed_sent: 0,
       failed_attempted: 0,
-      not_attempted: 10,
+      not_attempted: 0,
       reason: 'delivery_error',
+      skipped: 10,
       success: false,
     }),
   ]);
+});
+
+test('reports a partial delivery when an oversized post is skipped', async () => {
+  const fixture = await setupRun({ oversized: 1 });
+  await fixture.run();
+
+  expect(fixture.send).toHaveBeenCalledTimes(3);
+  expect(fixture.commit).toHaveBeenCalledOnce();
+  expect(fixture.log).toHaveBeenCalledWith(
+    '[delivery] Skipped 1 oversized post(s)',
+  );
+  expect(fixture.terminal()[0]).toMatchObject({
+    attempted: 9,
+    confirmed_sent: 9,
+    failed_attempted: 0,
+    items_new: 10,
+    not_attempted: 0,
+    outcome: 'partial',
+    reason: 'skipped',
+    skipped: 1,
+    status: 'success',
+  });
+  expect(fixture.notification()).toStrictEqual([
+    expect.objectContaining({
+      attempted: 9,
+      confirmed_sent: 9,
+      count: 9,
+      failed_attempted: 0,
+      not_attempted: 0,
+      reason: 'skipped',
+      skipped: 1,
+      success: true,
+    }),
+  ]);
+
+  fixture.assertSafe();
+});
+
+test('fails preflight and refetches when a post cannot be serialized', async () => {
+  const fixture = await setupRun({ unserializable: true });
+  fixture.sleep.mockResolvedValueOnce(undefined);
+  await fixture.run();
+
+  expect(fixture.getChanges).toHaveBeenCalledTimes(2);
+  expect(fixture.send).not.toHaveBeenCalled();
+  expect(fixture.commit).not.toHaveBeenCalled();
+  expect(fixture.terminal()[0]).toMatchObject({
+    reason: 'delivery_error',
+    skipped: 0,
+    status: 'error',
+  });
+  expect(fixture.terminal()).toHaveLength(2);
+
+  fixture.assertSafe();
+});
+
+test('refetches after an oversized preflight instead of retrying a wedged delivery', async () => {
+  const fixture = await setupRun({ oversized: true });
+  fixture.sleep.mockResolvedValueOnce(undefined);
+  await fixture.run();
+
+  expect(fixture.getChanges).toHaveBeenCalledTimes(2);
+  expect(fixture.send).not.toHaveBeenCalled();
+  expect(fixture.commit).not.toHaveBeenCalled();
+  expect(fixture.terminal()).toHaveLength(2);
+
+  fixture.assertSafe();
 });
 
 test.each([

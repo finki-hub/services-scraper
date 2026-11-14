@@ -4,25 +4,25 @@
     "password": "your_cas_password"
   },
   "errorDelay": 60000,
-  "errorWebhook": "your_error_webhook",
+  "errorWebhook": "",
   "maxPosts": 20,
-  "sendPosts": true,
+  "sendPosts": false,
   "successDelay": 180000,
-  "webhook": "your_global_webhook",
+  "webhook": "",
   "scrapers": {
     "announcements": {
       "strategy": "announcements",
       "link": "https://finki.ukim.mk/wp-json/wp/v2/announcement",
       "name": "Огласна табла",
       "role": "1333926602739810427",
-      "webhook": "your_announcement_webhook",
+      "webhook": "",
       "enabled": true
     },
     "jobs": {
       "strategy": "jobs",
       "link": "https://finki.ukim.mk/wp-json/wp/v2/jobs-and-internships",
       "name": "Огласи",
-      "webhook": "your_jobs_webhook",
+      "webhook": "",
       "enabled": true
     },
     "events": {

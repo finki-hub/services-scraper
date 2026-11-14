@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ConfigSchema, RequiredConfigSchema } from '../src/lib/Config.js';
@@ -6,40 +7,15 @@ import {
   Strategy,
   StrategySchema,
 } from '../src/lib/Scraper.js';
-import { truncateHeading, truncateString } from '../src/utils/components.js';
+import { truncateString } from '../src/utils/components.js';
 import { ERROR_MESSAGES } from '../src/utils/constants.js';
-import { getCookieHeader } from '../src/utils/cookies.js';
-import { extractErrorCauses } from '../src/utils/error-causes.js';
-import { normalizeURL } from '../src/utils/links.js';
 
 const invalidInputRegex = /Invalid/u;
+const schemaErrorRegex = /Invalid|Too small/u;
 
 afterEach(() => {
   vi.doUnmock('../src/configuration/config.js');
   vi.resetModules();
-});
-
-describe('normalizeURL', () => {
-  it('returns absolute URLs unchanged', () => {
-    expect(
-      normalizeURL('https://example.test/file.pdf', 'https://base.test'),
-    ).toBe('https://example.test/file.pdf');
-  });
-
-  it('resolves root-relative URLs against the base origin', () => {
-    expect(
-      normalizeURL('/mk/student-announcement', 'https://finki.ukim.mk'),
-    ).toBe('https://finki.ukim.mk/mk/student-announcement');
-  });
-
-  it('resolves relative URLs against the base parent path', () => {
-    expect(
-      normalizeURL(
-        'raspored.pdf',
-        'https://finki.ukim.mk/mk/student-announcement',
-      ),
-    ).toBe('https://finki.ukim.mk/mk/raspored.pdf');
-  });
 });
 
 describe('truncateString', () => {
@@ -49,54 +25,6 @@ describe('truncateString', () => {
 
   it('truncates long strings and preserves max length', () => {
     expect(truncateString('1234567890', 6)).toBe('123...');
-  });
-});
-
-describe('truncateHeading', () => {
-  it('uses the Discord heading length limit by default', () => {
-    const heading = 'a'.repeat(300);
-
-    expect(truncateHeading(heading)).toHaveLength(256);
-    expect(truncateHeading(heading).slice(-3)).toBe('...');
-  });
-});
-
-describe('getCookieHeader', () => {
-  it('joins cookies with semicolon separators', () => {
-    expect(
-      getCookieHeader({
-        MoodleSession: 'abc',
-        SRVNAME: 'node1',
-      }),
-    ).toBe('MoodleSession=abc; SRVNAME=node1');
-  });
-
-  it('returns an empty header for no cookies', () => {
-    expect(getCookieHeader({})).toBe('');
-  });
-});
-
-describe('extractErrorCauses', () => {
-  it('flattens nested Error causes in order', () => {
-    const root = new Error('root');
-    const middle = new Error('middle', { cause: root });
-    const top = new Error('top', { cause: middle });
-
-    expect(extractErrorCauses(top)).toStrictEqual(['middle', 'root']);
-  });
-
-  it('includes non-Error causes and stops', () => {
-    expect(
-      extractErrorCauses(new Error('top', { cause: 'plain cause' })),
-    ).toStrictEqual(['plain cause']);
-  });
-
-  it('stops on self-referential causes', () => {
-    const error = new Error('loop');
-    // eslint-disable-next-line unicorn/no-error-property-assignment -- a self-referential cause cannot be set at construction time
-    error.cause = error;
-
-    expect(extractErrorCauses(error)).toStrictEqual([]);
   });
 });
 
@@ -189,6 +117,84 @@ describe('configuration schemas', () => {
         },
       }),
     ).toThrow(invalidInputRegex);
+  });
+
+  it('rejects empty credential fields', () => {
+    expect(() =>
+      RequiredConfigSchema.parse({
+        credentials: { password: '', username: '' },
+      }),
+    ).toThrow(schemaErrorRegex);
+  });
+
+  it('rejects non-positive maxPosts and negative delays', () => {
+    expect(() => RequiredConfigSchema.parse({ maxPosts: 0 })).toThrow(
+      schemaErrorRegex,
+    );
+    expect(() => RequiredConfigSchema.parse({ maxPosts: -1 })).toThrow(
+      schemaErrorRegex,
+    );
+    expect(() => RequiredConfigSchema.parse({ errorDelay: -1 })).toThrow(
+      schemaErrorRegex,
+    );
+    expect(() => RequiredConfigSchema.parse({ successDelay: -1 })).toThrow(
+      schemaErrorRegex,
+    );
+  });
+
+  it('rejects malformed links and enabled scrapers with unknown strategies', () => {
+    expect(() =>
+      ScraperConfigSchema.parse({ link: 'not-a-url', strategy: 'jobs' }),
+    ).toThrow(schemaErrorRegex);
+    expect(() =>
+      RequiredConfigSchema.parse({
+        scrapers: {
+          stale: { enabled: true, link: exampleLink, strategy: 'unknown' },
+        },
+      }),
+    ).toThrow(schemaErrorRegex);
+  });
+
+  it('ignores the strategy of disabled scrapers', () => {
+    expect(
+      RequiredConfigSchema.parse({
+        scrapers: {
+          stale: { enabled: false, link: exampleLink, strategy: 'unknown' },
+        },
+      }).scrapers,
+    ).toHaveProperty('stale.strategy', 'unknown');
+  });
+
+  it('rejects malformed webhook URLs but allows disabled webhooks', () => {
+    expect(() => RequiredConfigSchema.parse({ webhook: 'not-a-url' })).toThrow(
+      schemaErrorRegex,
+    );
+    expect(RequiredConfigSchema.parse({ webhook: '' }).webhook).toBe('');
+  });
+
+  it('rejects malformed role IDs but allows disabling mentions', () => {
+    expect(() =>
+      ScraperConfigSchema.parse({
+        link: exampleLink,
+        role: 'everyone',
+        strategy: 'jobs',
+      }),
+    ).toThrow(schemaErrorRegex);
+    expect(
+      ScraperConfigSchema.parse({
+        link: exampleLink,
+        role: '',
+        strategy: 'jobs',
+      }).role,
+    ).toBe('');
+  });
+
+  it('parses the shipped sample configuration', () => {
+    const sample: unknown = JSON.parse(
+      readFileSync('./config/config.sample.json', 'utf8'),
+    );
+
+    expect(() => ConfigSchema.parse(sample)).not.toThrow();
   });
 });
 

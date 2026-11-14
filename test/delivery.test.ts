@@ -49,7 +49,10 @@ test('packs actual recursive API component counts including mention and accessor
   );
   const mention = builder({ type: 10 });
 
-  const batches = materializeDeliveryBatches(posts as never, mention as never);
+  const { batches } = materializeDeliveryBatches(
+    posts as never,
+    mention as never,
+  );
 
   expect(batches).toHaveLength(6);
 
@@ -72,7 +75,8 @@ test('detaches materialized JSON from mutable builder output', () => {
   };
   const post = builder(source);
 
-  const [batch] = materializeDeliveryBatches([post] as never);
+  const { batches } = materializeDeliveryBatches([post] as never);
+  const [batch] = batches;
   const sourceComponent = source.components[0];
   if (sourceComponent === undefined)
     throw new Error('missing source component');
@@ -91,7 +95,7 @@ test('packs smaller component trees together without exceeding forty', () => {
       type: 17,
     }),
   );
-  const batches = materializeDeliveryBatches(
+  const { batches } = materializeDeliveryBatches(
     posts as never,
     builder({ type: 10 }) as never,
   );
@@ -103,7 +107,7 @@ test('packs smaller component trees together without exceeding forty', () => {
   }
 });
 
-test('rejects an individually oversized post before exposing any batch', () => {
+test('skips an individually oversized post without exposing any batch', () => {
   const posts = [
     builder({
       components: Array.from({ length: 40 }, () => ({ type: 10 })),
@@ -111,8 +115,44 @@ test('rejects an individually oversized post before exposing any batch', () => {
     }),
   ];
 
-  expect(() => materializeDeliveryBatches(posts as never)).toThrow(
-    'oversized_post',
+  const { batches, skippedPostCount } = materializeDeliveryBatches(
+    posts as never,
   );
+
+  expect(skippedPostCount).toBe(1);
+  expect(batches).toStrictEqual([]);
   expect(posts[0]?.toJSON).toHaveBeenCalledOnce();
+});
+
+test('skips an oversized post and delivers the remaining posts', () => {
+  const oversized = builder({
+    components: Array.from({ length: 40 }, () => ({ type: 10 })),
+    type: 17,
+  });
+  const normal = builder({
+    components: [{ type: 10 }],
+    type: 17,
+  });
+
+  const { batches, skippedPostCount } = materializeDeliveryBatches([
+    oversized,
+    normal,
+  ] as never);
+
+  expect(skippedPostCount).toBe(1);
+  expect(batches.map((batch) => batch.postCount)).toStrictEqual([1]);
+  expect(componentCount(batches[0]?.components)).toBe(2);
+});
+
+test('rejects a post whose builder cannot be serialized', () => {
+  const broken = {
+    toJSON: () => {
+      throw new Error('unserializable');
+    },
+  };
+  const normal = builder({ components: [], type: 17 });
+
+  expect(() => materializeDeliveryBatches([broken, normal] as never)).toThrow(
+    'unserializable',
+  );
 });

@@ -36,6 +36,7 @@ type PendingDelivery = {
   itemsFound: number;
   itemsNew: number;
   preflightError?: Error;
+  skipped: number;
 };
 
 export class Scraper {
@@ -96,6 +97,7 @@ export class Scraper {
         phase: 'cookie_validation',
         reason: 'completed',
         runId: randomUUID(),
+        skipped: 0,
         source: this.scraperName,
         status: 'success',
       };
@@ -161,7 +163,7 @@ export class Scraper {
 
   private captureDeliveryOutcome(run: ScrapeRunEvent, success: boolean): void {
     let reason: ScrapeRunEvent['reason'] = 'delivery_error';
-    if (success) reason = 'completed';
+    if (success) reason = run.skipped > 0 ? 'skipped' : 'completed';
     else if (run.reason === 'missing_webhook') reason = 'missing_webhook';
     captureNotificationSent({
       attempted: run.attempted,
@@ -171,6 +173,7 @@ export class Scraper {
       notAttempted: run.notAttempted,
       reason,
       runId: run.runId,
+      skipped: run.skipped,
       source: this.scraperName,
       success,
     });
@@ -189,8 +192,16 @@ export class Scraper {
     pending: PendingDelivery,
     sendPosts: boolean,
   ): void {
-    run.outcome = sendPosts ? 'delivered' : 'disabled';
-    run.reason = sendPosts ? 'completed' : 'disabled';
+    if (!sendPosts) {
+      run.outcome = 'disabled';
+      run.reason = 'disabled';
+    } else if (run.skipped > 0) {
+      run.outcome = 'partial';
+      run.reason = 'skipped';
+    } else {
+      run.outcome = 'delivered';
+      run.reason = 'completed';
+    }
     run.phase = 'commit';
     pending.commit();
     this.pendingDelivery = undefined;
@@ -198,7 +209,7 @@ export class Scraper {
 
   private countPendingPosts(pending: PendingDelivery): number {
     return pending.batches.length === 0 && pending.cursor === 0
-      ? pending.itemsNew
+      ? Math.max(0, pending.itemsNew - pending.skipped)
       : pending.batches
           .slice(pending.cursor)
           .reduce((total, batch) => total + batch.postCount, 0);
@@ -214,8 +225,8 @@ export class Scraper {
       cursor: 0,
       itemsFound: result.itemsFound ?? result.posts.length,
       itemsNew: result.posts.length,
+      skipped: 0,
     };
-    this.pendingDelivery = pending;
 
     if (getConfigProperty('sendPosts')) {
       run.phase = 'delivery';
@@ -225,16 +236,34 @@ export class Scraper {
           this.scraperConfig.role === ''
             ? undefined
             : createMentionComponent(this.scraperConfig.role);
-        pending.batches = materializeDeliveryBatches(
+        const { batches, skippedPostCount } = materializeDeliveryBatches(
           result.posts.map((post) => post.component),
           mention,
         );
+        pending.batches = batches;
+        pending.skipped = skippedPostCount;
+
+        if (skippedPostCount > 0) {
+          this.logger.error(
+            `[${this.scraperName}] Skipped ${skippedPostCount} oversized post(s)`,
+          );
+        }
+        if (batches.length === 0 && result.posts.length > 0) {
+          pending.preflightError = new Error('undeliverable_posts');
+        }
       } catch (error) {
         pending.preflightError =
           error instanceof Error
             ? error
             : new Error('delivery_preflight_error');
       }
+    }
+
+    // A pending delivery that cannot be materialized would be retried forever
+    // without refetching. Only retain it once preflight has succeeded; the next
+    // cycle then fetches fresh posts instead of repeating the same failure.
+    if (pending.preflightError === undefined) {
+      this.pendingDelivery = pending;
     }
 
     return pending;
@@ -324,6 +353,7 @@ export class Scraper {
     run.itemsFound = pending.itemsFound;
     run.itemsNew = pending.itemsNew;
     run.notAttempted = this.countPendingPosts(pending);
+    run.skipped = pending.skipped;
     const sendPosts = getConfigProperty('sendPosts');
 
     if (sendPosts) {
