@@ -1,76 +1,88 @@
 # FINKI Hub / Services Scraper
 
-Tooling for scraping and providing publicly available data from FCSE services. The data is provided using a REST API or webhooks. Requires Node.js 26+.
+Scrapes FCSE services and delivers updates to Discord webhooks. Requires Node.js 26+.
 
 ## Architecture
 
-The scrapers are implemented as classes (called strategies) which contain several selectors and methods for fetching the data from each container (post, announcement, etc). Adding a new service requires creating a new strategy and linking it. See [the example strategy](./src/strategies/ExampleStrategy.ts) for more info.
+Scrapers are implemented as strategy classes that extract posts from a service. Each configured scraper selects a strategy and supplies its source URL and optional Discord settings. New services are added by creating a strategy and registering it in [`src/utils/strategies.ts`](./src/utils/strategies.ts); see [`ExampleStrategy`](./src/strategies/ExampleStrategy.ts) for the shape.
 
-## Quick Setup (Production)
+## Quick start
 
-To run the scraper:
+### Docker
 
-1. Clone the repository: `git clone https://github.com/finki-hub/services-scraper.git`
-2. Prepare configuration by copying `config/config.sample.json` to `config/config.json`
-3. Install dependencies: `npm i`
-4. Run the scraper `npm run start`
+1. Clone the repository and prepare the configuration:
+   ```sh
+   git clone https://github.com/finki-hub/services-scraper.git
+   cd services-scraper
+   cp config/config.sample.json config/config.json
+   ```
+2. Edit `config/config.json`. The sample starts with `sendPosts: false` and empty webhooks; set `sendPosts` to `true` and configure at least one webhook to deliver posts.
+3. Start the published image:
+   ```sh
+   docker compose -f compose.prod.yaml up -d
+   ```
+   To build locally instead, use `docker compose up -d --build`.
 
-It's also available as a Docker image:
+The compose files mount `config/`, `cache/`, and `logs/`. The published image is `ghcr.io/finki-hub/services-scraper:latest`.
+
+### Local
+
+1. `npm ci`
+2. `cp config/config.sample.json config/config.json` and edit it.
+3. `npm run build`
+4. `npm start`
+
+Select scrapers declaratively with each scraper's `enabled` flag, or pass names explicitly:
 
 ```sh
-docker run -d \
-  --name services-scraper \
-  --restart unless-stopped \
-  -v ./cache:/app/cache \
-  -v ./config:/app/config \
-  -v ./logs:/app/logs \
-  ghcr.io/finki-hub/services-scraper:latest
+npm start -- scraper_1 scraper_2
 ```
-
-Or Docker Compose: `docker compose up -d`
-
-You can select which scrapers to run declaratively (in the configuration with the `enabled` flag) or imperatively: `npm run start scraper_1 scraper_2 ... scraper_n`
-
-## Quick Setup (Development)
-
-1. Clone the repository: `git clone https://github.com/finki-hub/services-scraper.git`
-2. Install dependencies: `npm i`
-3. Prepare configuration: `cp config/config.sample.json config/config.json`
-4. Build the project: `npm run build`
-5. Run it: `npm run start`
 
 ## Configuration
 
-There is an example configuration file available at [`config/config.sample.json`](./config/config.sample.json). Copy it to `config/config.json` and edit it to your liking.
+Start from [`config/config.sample.json`](./config/config.sample.json). `config/config.json`, `cache/`, and `logs/` are ignored by Git.
 
-### Analytics
+- `credentials`: Required for services that authenticate through CAS; omit it when only public sources are enabled.
+- `webhook`: Discord delivery webhook. A scraper-level `webhook` overrides the global one; an empty value disables delivery for that scope.
+- `errorWebhook`: Global webhook for error and recovery notices. If empty, errors fall back to the scraper's normal webhook.
+- `sendPosts`: Set to `true` after configuring webhooks.
+- `maxPosts`, `successDelay`, and `errorDelay`: Optional limits and delays; defaults are in [`src/configuration/defaults.ts`](./src/configuration/defaults.ts).
+- `scrapers`: A map of scraper names to `{ strategy, link, enabled, ... }`. Disabled entries are never started.
 
-PostHog product analytics are wired through environment variables. They are no-ops when `POSTHOG_KEY` is empty (dev/CI/tests emit nothing). The following events are emitted — all metadata only, no scraped content:
+## Analytics
 
-- `scrape_started` — emitted before each scraper iteration starts. Properties: `source`.
-- `scrape_run` — emitted after each scraper iteration succeeds or fails. Properties: `source`, `service`, `run_id`, `items_found`, `items_new`, `attempted`, `confirmed_sent`, `failed_attempted`, `not_attempted`, `skipped`, `outcome`, `reason`, `phase`, `ms`, `status`. `outcome` is `partial` when some posts exceeded Discord's component limit and were skipped.
-- `source_scraped` — emitted after each source scrape succeeds or fails. Properties: `source`, `run_id`, `records_added`, `records_total`, `duration_ms`, `success`.
-- `notification_sent` — emitted after a Discord notification batch succeeds or fails. Properties: `source`, `service`, `run_id`, `count`, `attempted`, `confirmed_sent`, `failed_attempted`, `not_attempted`, `skipped`, `reason`, `success`.
-- Exception capture — emitted for handled scraper errors via PostHog exception capture. Properties include `service`, `category`, `phase`, `reason`, `run_id`, and `source`; exception messages and stack traces are not sent.
+PostHog analytics are optional and disabled when `POSTHOG_KEY` is empty. Events are metadata-only and contain no scraped content: `scrape_started`, `scrape_run`, `source_scraped`, `notification_sent`, and exception capture. Exception messages and stack traces are not sent. Event properties are defined in [`src/utils/analytics.ts`](./src/utils/analytics.ts).
 
-Posts that cannot be serialized are not skipped: the run fails during delivery preflight so the post is not silently dropped, and the next cycle refetches instead of retrying stale state.
+| Variable       | Default                    | Description                          |
+| -------------- | -------------------------- | ------------------------------------ |
+| `POSTHOG_KEY`  | _empty_                    | PostHog project ingest key (public). |
+| `POSTHOG_HOST` | `https://eu.i.posthog.com` | PostHog Cloud EU ingest host.        |
 
-| Variable       | Default                      | Description                            |
-| -------------- | ---------------------------- | -------------------------------------- |
-| `POSTHOG_KEY`  | _empty_                      | PostHog project ingest key (public).   |
-| `POSTHOG_HOST` | `https://eu.i.posthog.com`   | PostHog Cloud EU ingest host.          |
+## Logging
 
-Analytics require an explicit `POSTHOG_KEY` in the environment; without it the scraper runs silently with no telemetry.
-
-### Logging
-
-In production (`NODE_ENV=production`), logs are emitted as JSON to stdout and rotated in the `logs/` directory daily or at 10 MB, keeping the seven most recent rotated files, including files left by previous container runs. The active file is `logs/bot.<n>.log`; the legacy unnumbered `logs/bot.log` is not matched by rotation and must be removed manually. Update any tooling that previously tailed `logs/bot.log`. Outside production, logs are written to stdout through `pino-pretty`.
-
-Failed scrapers retry with exponential backoff from `errorDelay`, capped at 15 minutes (or at the configured `errorDelay` when it is larger). The failure count and alert state are retained across a single success and reset only after two consecutive successful runs. Error notifications are sent on the first failure of each reason, at most once every six hours per reason, and once after two consecutive successful runs.
+In production (`NODE_ENV=production`), logs are emitted as JSON to stdout and rotated in `logs/` daily or at 10 MB, keeping seven rotated files. The active file is `logs/bot.<n>.log`. Outside production, logs use `pino-pretty` on stdout.
 
 | Variable    | Default | Description                                                                 |
 | ----------- | ------- | --------------------------------------------------------------------------- |
 | `LOG_LEVEL` | `info`  | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent`. |
+
+## Failure handling
+
+Failing scrapers retry with exponential backoff from `errorDelay`, capped at 15 minutes (or at the configured `errorDelay` when it is larger). Failure state survives a single success and resets after two consecutive successful runs. Error alerts are sent on the first failure of each reason, at most once every six hours per reason, plus one recovery notification after a stable recovery.
+
+## Development
+
+```sh
+npm ci
+cp config/config.sample.json config/config.json
+npm run build
+npm start
+
+npm run check   # TypeScript
+npm run lint    # ESLint
+npm test        # Vitest
+npm run format  # ESLint --fix
+```
 
 ## License
 
