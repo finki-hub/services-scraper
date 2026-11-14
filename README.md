@@ -64,9 +64,9 @@ Analytics require an explicit `POSTHOG_KEY` in the environment; without it the s
 
 ### Logging
 
-In production (`NODE_ENV=production`), logs are emitted as JSON to stdout and rotated in the `logs/` directory daily or at 10 MB, keeping the seven most recent rotated files. Outside production, logs are written to stdout through `pino-pretty`.
+In production (`NODE_ENV=production`), logs are emitted as JSON to stdout and rotated in the `logs/` directory daily or at 10 MB, keeping the seven most recent rotated files. The active file is `logs/bot.<n>.log`; update any tooling that previously tailed `logs/bot.log`. Outside production, logs are written to stdout through `pino-pretty`.
 
-Failed scrapers retry with exponential backoff from `errorDelay` up to 15 minutes. Error notifications are sent on the first failure, at most once every six hours while it persists, and once when the scraper recovers.
+Failed scrapers retry with exponential backoff from `errorDelay`, capped at 15 minutes (or at the configured `errorDelay` when it is larger). Error notifications are sent on the first failure of each reason, at most once every six hours per reason, and once after two consecutive successful runs.
 
 | Variable    | Default | Description                                                                 |
 | ----------- | ------- | --------------------------------------------------------------------------- |

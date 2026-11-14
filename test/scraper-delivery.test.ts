@@ -563,18 +563,24 @@ test('resets backoff and notifies once after recovery', async () => {
       : Promise.resolve({ commit: fixture.commit, posts: [] });
   });
   const delays: number[] = [];
+  let alertCallsAfterFirstSuccess: number | undefined;
 
   fixture.sleep.mockImplementation((ms: number) => {
     delays.push(ms);
 
-    return delays.length >= 2
+    if (delays.length === 2) {
+      alertCallsAfterFirstSuccess = fixture.errorSend.mock.calls.length;
+    }
+
+    return delays.length >= 3
       ? Promise.reject(new Error(stopScraperMessage))
       : Promise.resolve();
   });
 
   await fixture.run();
 
-  expect(delays).toStrictEqual([456, 123]);
+  expect(delays).toStrictEqual([456, 123, 123]);
+  expect(alertCallsAfterFirstSuccess).toBe(1);
   expect(fixture.errorSend).toHaveBeenCalledTimes(2);
 
   const messages = fixture.errorSend.mock.calls.map(

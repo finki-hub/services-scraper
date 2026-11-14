@@ -8,6 +8,7 @@ export type SafeErrorDetails = {
 };
 
 const CODE_REGEX = /^[\w.:-]{1,64}$/u;
+const MAX_AGGREGATE_ERRORS = 5;
 
 const readProperty = (error: Error, property: string): unknown => {
   try {
@@ -27,6 +28,33 @@ const readStatus = (value: unknown): number | undefined =>
   value <= 599
     ? value
     : undefined;
+
+const collectAggregateDetails = (
+  error: Error,
+  details: SafeErrorDetails,
+): void => {
+  const nested = readProperty(error, 'errors');
+
+  if (!Array.isArray(nested)) {
+    return;
+  }
+
+  for (const child of nested.slice(0, MAX_AGGREGATE_ERRORS)) {
+    if (!Error.isError(child)) {
+      continue;
+    }
+
+    const code = readCode(readProperty(child, 'code'));
+    const status = readStatus(readProperty(child, 'status'));
+
+    if (code !== undefined && !details.causeCodes.includes(code)) {
+      details.causeCodes.push(code);
+    }
+    if (status !== undefined && details.status === undefined) {
+      details.status = status;
+    }
+  }
+};
 
 // Read only primitive error metadata. Messages, stacks, request objects, and
 // arbitrary properties are intentionally excluded so credentials and scraped
@@ -48,17 +76,22 @@ export const getSafeErrorDetails = (error: unknown): SafeErrorDetails => {
     if (code !== undefined) details.code = code;
     if (status !== undefined) details.status = status;
 
+    collectAggregateDetails(error, details);
+
     let current: unknown = readProperty(error, 'cause');
 
     for (let depth = 0; depth < 3 && Error.isError(current); depth += 1) {
       const causeCode = readCode(readProperty(current, 'code'));
       const causeStatus = readStatus(readProperty(current, 'status'));
 
-      if (causeCode !== undefined) details.causeCodes.push(causeCode);
+      if (causeCode !== undefined && !details.causeCodes.includes(causeCode)) {
+        details.causeCodes.push(causeCode);
+      }
       if (causeStatus !== undefined && details.status === undefined) {
         details.status = causeStatus;
       }
 
+      collectAggregateDetails(current, details);
       current = readProperty(current, 'cause');
     }
   } catch {

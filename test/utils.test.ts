@@ -53,6 +53,22 @@ describe('safe error details', () => {
     expect(JSON.stringify(details)).not.toContain('secret');
   });
 
+  it('collects AggregateError child codes', () => {
+    const inner = Object.assign(new Error('secret'), {
+      code: 'ECONNREFUSED',
+    });
+    const cause = new AggregateError([inner], 'aggregate');
+    const error = new TypeError('fetch failed', { cause });
+
+    const details = getSafeErrorDetails(error);
+
+    expect(details).toStrictEqual({
+      category: 'type_error',
+      causeCodes: ['ECONNREFUSED'],
+    });
+    expect(formatSafeErrorDetails(details)).toBe('cause=ECONNREFUSED');
+  });
+
   it('ignores hostile thrown values', () => {
     const hostile = new Proxy(
       {},

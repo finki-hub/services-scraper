@@ -35,6 +35,7 @@ import { errorWebhook } from './utils/webhooks.js';
 
 const ERROR_ALERT_COOLDOWN_MS = 6 * 60 * 60_000;
 const MAX_ERROR_BACKOFF_MS = 15 * 60_000;
+const RECOVERY_SUCCESS_THRESHOLD = 2;
 
 type PendingDelivery = {
   batches: MaterializedBatch[];
@@ -55,9 +56,14 @@ export class Scraper {
 
   private consecutiveFailures = 0;
 
+  private consecutiveSuccesses = 0;
+
   private cookie: string | undefined;
 
-  private lastErrorAlertAt: number | undefined;
+  private readonly lastErrorAlerts = new Map<
+    ScrapeRunEvent['reason'],
+    number
+  >();
 
   private readonly logger: Logger;
 
@@ -146,12 +152,7 @@ export class Scraper {
 
       const failed = run.status === 'error';
 
-      if (failed) {
-        this.consecutiveFailures += 1;
-      } else {
-        await this.resetFailureState();
-      }
-
+      await this.trackRunOutcome(failed);
       await Scraper.sleep(this.getNextDelay(failed));
     }
   }
@@ -417,7 +418,7 @@ export class Scraper {
 
     const webhook = errorWebhook ?? this.webhook;
 
-    if (webhook === undefined || !this.shouldNotifyError()) {
+    if (webhook === undefined || !this.shouldNotifyError(run.reason)) {
       return;
     }
 
@@ -427,7 +428,7 @@ export class Scraper {
         username: this.scraperConfig.name ?? this.scraperName,
       });
       this.alertActive = true;
-      this.lastErrorAlertAt = Date.now();
+      this.lastErrorAlerts.set(run.reason, Date.now());
     } catch {
       this.logger.error(
         `[${this.scraperName}] Run: ${run.runId} Failed to send error to webhook`,
@@ -459,8 +460,9 @@ export class Scraper {
     const shouldNotify = this.alertActive;
 
     this.consecutiveFailures = 0;
-    this.lastErrorAlertAt = undefined;
+    this.consecutiveSuccesses = 0;
     this.alertActive = false;
+    this.lastErrorAlerts.clear();
 
     if (shouldNotify && failedRuns > 0) {
       await this.notifyRecovery(failedRuns);
@@ -507,11 +509,26 @@ export class Scraper {
     run.notAttempted = result.posts.length;
   }
 
-  private shouldNotifyError(): boolean {
+  private shouldNotifyError(reason: ScrapeRunEvent['reason']): boolean {
+    const lastAlert = this.lastErrorAlerts.get(reason);
+
     return (
-      !this.alertActive ||
-      this.lastErrorAlertAt === undefined ||
-      Date.now() - this.lastErrorAlertAt >= ERROR_ALERT_COOLDOWN_MS
+      lastAlert === undefined ||
+      Date.now() - lastAlert >= ERROR_ALERT_COOLDOWN_MS
     );
+  }
+
+  private async trackRunOutcome(failed: boolean): Promise<void> {
+    if (failed) {
+      this.consecutiveFailures += 1;
+      this.consecutiveSuccesses = 0;
+      return;
+    }
+
+    this.consecutiveSuccesses += 1;
+
+    if (this.consecutiveSuccesses >= RECOVERY_SUCCESS_THRESHOLD) {
+      await this.resetFailureState();
+    }
   }
 }
