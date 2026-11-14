@@ -46,14 +46,7 @@ const preparePost = (
   candidate: JSONEncodable<APIMessageTopLevelComponent>,
   mentionCount: number,
 ): PreparedPost | undefined => {
-  let post: APIMessageTopLevelComponent;
-
-  try {
-    post = structuredClone(candidate.toJSON());
-  } catch {
-    return undefined;
-  }
-
+  const post = structuredClone(candidate.toJSON());
   const count = countComponentTree(post);
 
   return count + mentionCount > MAX_COMPONENTS_PER_MESSAGE
@@ -63,8 +56,10 @@ const preparePost = (
 
 /**
  * Materializes and packs post components into Discord messages. Posts that
- * cannot be serialized or that exceed Discord's component limit are skipped
- * and counted, so one malformed post cannot block every other post.
+ * exceed Discord's component limit are skipped and counted, so one oversized
+ * post cannot block every other post. Serialization failures are not skipped:
+ * they indicate a strategy bug and must fail preflight instead of silently
+ * dropping a post.
  *
  * @param posts - Post component builders in feed order.
  * @param mention - Optional role mention added once per batch.

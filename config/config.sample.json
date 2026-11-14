@@ -6,7 +6,7 @@
   "errorDelay": 60000,
   "errorWebhook": "",
   "maxPosts": 20,
-  "sendPosts": true,
+  "sendPosts": false,
   "successDelay": 180000,
   "webhook": "",
   "scrapers": {

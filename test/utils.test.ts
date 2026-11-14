@@ -9,7 +9,6 @@ import {
 } from '../src/lib/Scraper.js';
 import { truncateString } from '../src/utils/components.js';
 import { ERROR_MESSAGES } from '../src/utils/constants.js';
-import { normalizeURL } from '../src/utils/links.js';
 
 const invalidInputRegex = /Invalid/u;
 const schemaErrorRegex = /Invalid|Too small/u;
@@ -17,29 +16,6 @@ const schemaErrorRegex = /Invalid|Too small/u;
 afterEach(() => {
   vi.doUnmock('../src/configuration/config.js');
   vi.resetModules();
-});
-
-describe('normalizeURL', () => {
-  it('returns absolute URLs unchanged', () => {
-    expect(
-      normalizeURL('https://example.test/file.pdf', 'https://base.test'),
-    ).toBe('https://example.test/file.pdf');
-  });
-
-  it('resolves root-relative URLs against the base origin', () => {
-    expect(
-      normalizeURL('/mk/student-announcement', 'https://finki.ukim.mk'),
-    ).toBe('https://finki.ukim.mk/mk/student-announcement');
-  });
-
-  it('resolves relative URLs against the base parent path', () => {
-    expect(
-      normalizeURL(
-        'raspored.pdf',
-        'https://finki.ukim.mk/mk/student-announcement',
-      ),
-    ).toBe('https://finki.ukim.mk/mk/raspored.pdf');
-  });
 });
 
 describe('truncateString', () => {

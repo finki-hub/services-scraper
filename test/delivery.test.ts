@@ -144,7 +144,7 @@ test('skips an oversized post and delivers the remaining posts', () => {
   expect(componentCount(batches[0]?.components)).toBe(2);
 });
 
-test('skips a post whose builder cannot be serialized', () => {
+test('rejects a post whose builder cannot be serialized', () => {
   const broken = {
     toJSON: () => {
       throw new Error('unserializable');
@@ -152,11 +152,7 @@ test('skips a post whose builder cannot be serialized', () => {
   };
   const normal = builder({ components: [], type: 17 });
 
-  const { batches, skippedPostCount } = materializeDeliveryBatches([
-    broken,
-    normal,
-  ] as never);
-
-  expect(skippedPostCount).toBe(1);
-  expect(batches.map((batch) => batch.postCount)).toStrictEqual([1]);
+  expect(() => materializeDeliveryBatches([broken, normal] as never)).toThrow(
+    'unserializable',
+  );
 });

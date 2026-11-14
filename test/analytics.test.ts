@@ -17,12 +17,14 @@ const deliveryCounts = {
   confirmedSent: 2,
   failedAttempted: 0,
   notAttempted: 0,
+  skipped: 0,
 };
 const wireCounts = {
   attempted: 2,
   confirmed_sent: 2,
   failed_attempted: 0,
   not_attempted: 0,
+  skipped: 0,
 };
 const capture = vi.fn<(...args: unknown[]) => void>();
 const captureException = vi.fn<(...args: unknown[]) => void>();

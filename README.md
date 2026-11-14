@@ -48,10 +48,12 @@ There is an example configuration file available at [`config/config.sample.json`
 PostHog product analytics are wired through environment variables. They are no-ops when `POSTHOG_KEY` is empty (dev/CI/tests emit nothing). The following events are emitted — all metadata only, no scraped content:
 
 - `scrape_started` — emitted before each scraper iteration starts. Properties: `source`.
-- `scrape_run` — emitted after each scraper iteration succeeds or fails. Properties: `source`, `service`, `items_found`, `items_new`, `ms`, `status`.
-- `source_scraped` — emitted after each source scrape succeeds or fails. Properties: `source`, `records_added`, `records_total`, `duration_ms`, `success`.
-- `notification_sent` — emitted after a Discord notification batch succeeds or fails. Properties: `source`, `count`, `success`.
-- Exception capture — emitted for handled scraper errors via PostHog exception capture. Properties include `service`, `context`, and `scraper`; PostHog records the exception message and stack trace only (Node.js does not serialize frame-local variables).
+- `scrape_run` — emitted after each scraper iteration succeeds or fails. Properties: `source`, `service`, `run_id`, `items_found`, `items_new`, `attempted`, `confirmed_sent`, `failed_attempted`, `not_attempted`, `skipped`, `outcome`, `reason`, `phase`, `ms`, `status`. `outcome` is `partial` when some posts exceeded Discord's component limit and were skipped.
+- `source_scraped` — emitted after each source scrape succeeds or fails. Properties: `source`, `run_id`, `records_added`, `records_total`, `duration_ms`, `success`.
+- `notification_sent` — emitted after a Discord notification batch succeeds or fails. Properties: `source`, `service`, `run_id`, `count`, `attempted`, `confirmed_sent`, `failed_attempted`, `not_attempted`, `skipped`, `reason`, `success`.
+- Exception capture — emitted for handled scraper errors via PostHog exception capture. Properties include `service`, `category`, `phase`, `reason`, `run_id`, and `source`; exception messages and stack traces are not sent.
+
+Posts that cannot be serialized are not skipped: the run fails during delivery preflight so the post is not silently dropped, and the next cycle refetches instead of retrying stale state.
 
 | Variable       | Default                      | Description                            |
 | -------------- | ---------------------------- | -------------------------------------- |
