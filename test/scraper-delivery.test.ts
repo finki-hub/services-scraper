@@ -1,6 +1,5 @@
 /* eslint-disable camelcase -- Assertions use PostHog wire property names. */
 /* eslint-disable max-lines -- The scraper fixture and its behaviour tests are intentionally colocated. */
-/* eslint-disable vitest/prefer-to-be-falsy -- Require literal false for person-profile suppression. */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 import type { StrategyContext, StrategyResult } from '../src/lib/Scraper.js';
@@ -203,6 +202,7 @@ const setupRun = async (
   type CapturedEvent = {
     distinctId: string;
     event: string;
+    options: Record<string, unknown>;
     properties: Record<string, unknown>;
   };
 
@@ -715,7 +715,8 @@ test('successful chunks count acknowledged sends and correlate all stages across
   }
   for (const event of fixture.events) {
     expect(event.distinctId).toBe('services-scraper');
-    expect(event.properties['$process_person_profile']).toBe(false);
+    expect(event.options).toStrictEqual({ process_person_profile: false });
+    expect(event.properties).not.toHaveProperty('$process_person_profile');
     expect(event.properties).not.toHaveProperty('sent');
     expect(event.properties).not.toHaveProperty('failed');
   }
@@ -903,9 +904,11 @@ test('cookie validation failure includes validation time and emits one correlate
     status: 'error',
   });
   expect(fixture.exceptions).toHaveBeenCalledOnce();
-  expect(fixture.exceptions.mock.calls[0]?.[2]).toMatchObject({
-    phase: 'cookie_validation',
-    run_id: fixture.terminal()[1]?.['run_id'],
+  expect(fixture.exceptions.mock.calls[0]?.[1]).toMatchObject({
+    properties: {
+      phase: 'cookie_validation',
+      run_id: fixture.terminal()[1]?.['run_id'],
+    },
   });
   expect(fixture.sleep.mock.calls).toStrictEqual([[123], [456]]);
 
@@ -916,8 +919,8 @@ test('unknown errors are projected without serialization', async () => {
   const fixture = await setupRun({ stage: 'fetch', unknownError: true });
   await fixture.run();
 
-  expect(fixture.exceptions.mock.calls[0]?.[2]).toMatchObject({
-    category: 'unknown',
+  expect(fixture.exceptions.mock.calls[0]?.[1]).toMatchObject({
+    properties: { category: 'unknown' },
   });
 
   fixture.assertSafe();
@@ -1025,15 +1028,18 @@ test('exception projection ignores arbitrary properties and hostile thrown value
 
   expect(fixture.exceptions).toHaveBeenCalledTimes(2);
 
-  for (const [error, distinctId, metadata] of fixture.exceptions.mock.calls) {
+  for (const [error, captureOptions] of fixture.exceptions.mock.calls) {
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).stack).toBe('Error: unknown');
-    expect(metadata).toMatchObject({
-      category: 'unknown',
-      phase: 'fetch',
-      reason: 'fetch_error',
+    expect(captureOptions).toMatchObject({
+      distinctId: 'services-scraper',
+      options: { process_person_profile: false },
+      properties: {
+        category: 'unknown',
+        phase: 'fetch',
+        reason: 'fetch_error',
+      },
     });
-    expect(distinctId).toBe('services-scraper');
   }
   fixture.assertSafe();
 });

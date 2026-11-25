@@ -104,7 +104,6 @@ test('adds the startup revision to every existing event without changing operati
   emitEvents(analytics);
 
   const common = {
-    $process_person_profile: false,
     app_revision: revision,
     run_id: runId,
     service,
@@ -116,6 +115,7 @@ test('adds the startup revision to every existing event without changing operati
       {
         distinctId: service,
         event: 'scrape_started',
+        options: { process_person_profile: false },
         properties: common,
       },
     ],
@@ -123,6 +123,7 @@ test('adds the startup revision to every existing event without changing operati
       {
         distinctId: service,
         event: 'notification_sent',
+        options: { process_person_profile: false },
         properties: {
           ...common,
           ...wireCounts,
@@ -136,6 +137,7 @@ test('adds the startup revision to every existing event without changing operati
       {
         distinctId: service,
         event: 'source_scraped',
+        options: { process_person_profile: false },
         properties: {
           ...common,
           duration_ms: 15,
@@ -149,6 +151,7 @@ test('adds the startup revision to every existing event without changing operati
       {
         distinctId: service,
         event: 'scrape_run',
+        options: { process_person_profile: false },
         properties: {
           ...common,
           ...wireCounts,
@@ -194,15 +197,17 @@ test.each([
 
     expect(captureException).toHaveBeenCalledExactlyOnceWith(
       expect.any(Error),
-      service,
       {
-        $process_person_profile: false,
-        category: 'error',
-        phase: 'fetch',
-        reason: 'fetch_error',
-        run_id: runId,
-        service,
-        source: 'announcements',
+        distinctId: service,
+        options: { process_person_profile: false },
+        properties: {
+          category: 'error',
+          phase: 'fetch',
+          reason: 'fetch_error',
+          run_id: runId,
+          service,
+          source: 'announcements',
+        },
       },
     );
     expect(captureException.mock.calls[0]?.[0]).not.toBe(error);
@@ -230,16 +235,18 @@ test.each(['f'.repeat(40), undefined])(
 
     expect(captureException).toHaveBeenCalledExactlyOnceWith(
       expect.any(Error),
-      service,
       {
-        $process_person_profile: false,
-        app_revision: revision,
-        category: 'error',
-        phase: 'fetch',
-        reason: 'fetch_error',
-        run_id: runId,
-        service,
-        source: 'announcements',
+        distinctId: service,
+        options: { process_person_profile: false },
+        properties: {
+          app_revision: revision,
+          category: 'error',
+          phase: 'fetch',
+          reason: 'fetch_error',
+          run_id: runId,
+          service,
+          source: 'announcements',
+        },
       },
     );
     expect(captureException.mock.calls[0]?.[0]).not.toBe(error);

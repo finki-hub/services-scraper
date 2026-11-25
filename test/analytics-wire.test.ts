@@ -35,7 +35,9 @@ beforeEach(async () => {
                 : gunzipSync(request.body as Uint8Array).toString('utf8'),
             );
 
-            return Promise.resolve(new Response('{}', { status: 200 }));
+            return Promise.resolve(
+              new Response('{"results":{}}', { status: 200 }),
+            );
           },
         });
         clients.push(this);
@@ -106,6 +108,7 @@ test.each([
           JSON.parse(body) as {
             batch: Array<{
               event: string;
+              options: Record<string, unknown>;
               properties: Record<string, unknown>;
             }>;
           }
@@ -116,8 +119,8 @@ test.each([
     expect(events[0]).toMatchObject({
       distinct_id: 'services-scraper',
       event: '$exception',
+      options: { process_person_profile: false },
       properties: {
-        $process_person_profile: false,
         app_revision: revision,
         category,
         phase: 'fetch',
