@@ -1,11 +1,12 @@
 /* eslint-disable camelcase -- PostHog wire properties use snake_case. */
 import { setTimeout } from 'node:timers/promises';
-import { PostHog } from 'posthog-node';
+import { type EventOptions, PostHog } from 'posthog-node';
 
 import { logger } from './logger.js';
 import { errorCategory } from './safe-error.js';
 
 const SERVICE_NAME = 'services-scraper';
+const EVENT_OPTIONS: EventOptions = { process_person_profile: false };
 
 const POSTHOG_KEY = process.env['POSTHOG_KEY'] ?? '';
 const POSTHOG_HOST = process.env['POSTHOG_HOST'] ?? 'https://eu.i.posthog.com';
@@ -103,8 +104,8 @@ export const captureScrapeStarted = (event: ScrapeStartedEvent): void => {
     client?.capture({
       distinctId: SERVICE_NAME,
       event: 'scrape_started',
+      options: EVENT_OPTIONS,
       properties: withAppRevision({
-        $process_person_profile: false,
         run_id: event.runId,
         service: SERVICE_NAME,
         source: event.source,
@@ -118,8 +119,8 @@ export const captureNotificationSent = (event: NotificationSentEvent): void => {
     client?.capture({
       distinctId: SERVICE_NAME,
       event: 'notification_sent',
+      options: EVENT_OPTIONS,
       properties: withAppRevision({
-        $process_person_profile: false,
         attempted: event.attempted,
         confirmed_sent: event.confirmedSent,
         count: event.count,
@@ -141,8 +142,8 @@ export const captureSourceScraped = (event: SourceScrapedEvent): void => {
     client?.capture({
       distinctId: SERVICE_NAME,
       event: 'source_scraped',
+      options: EVENT_OPTIONS,
       properties: withAppRevision({
-        $process_person_profile: false,
         duration_ms: event.durationMs,
         records_added: event.recordsAdded,
         records_total: event.recordsTotal,
@@ -160,8 +161,8 @@ export const captureScrapeRun = (event: ScrapeRunEvent): void => {
     client?.capture({
       distinctId: SERVICE_NAME,
       event: 'scrape_run',
+      options: EVENT_OPTIONS,
       properties: withAppRevision({
-        $process_person_profile: false,
         attempted: event.attempted,
         confirmed_sent: event.confirmedSent,
         failed_attempted: event.failedAttempted,
@@ -198,11 +199,10 @@ export const captureException = (
     // stack (and enriching it with source context) for a missing or empty stack.
     // eslint-disable-next-line unicorn/no-error-property-assignment -- Intentionally replace all frames with a categorical header.
     safeError.stack = `Error: ${category}`;
-    client?.captureException(
-      safeError,
-      SERVICE_NAME,
-      withAppRevision({
-        $process_person_profile: false,
+    client?.captureException(safeError, {
+      distinctId: SERVICE_NAME,
+      options: EVENT_OPTIONS,
+      properties: withAppRevision({
         category,
         phase: properties.phase,
         reason: properties.reason,
@@ -210,7 +210,7 @@ export const captureException = (
         service: SERVICE_NAME,
         source: properties.source,
       }),
-    );
+    });
   } catch {}
 };
 
